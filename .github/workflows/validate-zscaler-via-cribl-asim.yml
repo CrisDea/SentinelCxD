@@ -49,8 +49,9 @@ jobs:
         shell: pwsh
         working-directory: ZscalerViaCriblwithASIM
         run: |
-          $patterns = 'client_secret\s*[:=]\s*["''][^@<]', `
-            'access_token\s*[:=]\s*["''][A-Za-z0-9]'
+          $patterns = `
+            '(?i)(client_secret|access_token|refresh_token|api_key|password)\s*[:=]\s*["''][A-Za-z0-9+/_.~-]{16,}["'']', `
+            '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
           foreach ($pattern in $patterns) {
             $matches = Get-ChildItem -Recurse -File |
               Where-Object FullName -NotMatch '\\.git\\' |
