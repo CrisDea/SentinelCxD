@@ -1,5 +1,7 @@
 # SentinelCxD
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/CrisDea/SentinelCxD/badge)](https://scorecard.dev/viewer/?uri=github.com/CrisDea/SentinelCxD)
+
 Reusable, customer-neutral Microsoft Sentinel content engineered for
 deployment through Azure Resource Manager or Microsoft Sentinel Repositories.
 
