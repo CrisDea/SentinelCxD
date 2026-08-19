@@ -1,0 +1,541 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler web overview â€” ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsOverview.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-web-overview-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "fb961a4b-3a93-5666-ae0c-6063c3483da8",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "62d103b8-1c23-56c5-8ed1-9990046c79f8",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "5c95fbbe-d144-5d39-ba8d-495aef1d5d32",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourceIP",
+            "label": "Source IP",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n\n| where isnotempty(SrcIpAddr)\n| summarize Count=count() by Value=tostring(SrcIpAddr)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          },
+          {
+            "id": "f3ba98b2-c440-544d-b5e7-baffc7be66bf",
+            "version": "KqlParameterItem/1.0",
+            "name": "DestinationIP",
+            "label": "Destination IP",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n\n| where isnotempty(DstIpAddr)\n| summarize Count=count() by Value=tostring(DstIpAddr)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-web-overview-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| extend DestinationServiceName=tostring(AdditionalFields['Application'])\n| where isnotempty(DestinationServiceName)\n| summarize Count=count() by DestinationServiceName\n| order by Count desc\n",
+        "size": 0,
+        "title": "Apps being accessed",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "DestinationServiceName",
+        "exportParameterName": "DestinationServiceNameFilter",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "palette": "purple",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "40",
+      "name": "zia-web-overview-panel-01-a40e160a"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| extend DestinationServiceName=tostring(AdditionalFields['Application'])\n| where isnotempty(DestinationServiceName) and ('{DestinationServiceNameFilter}' == 'All' or DestinationServiceName == '{DestinationServiceNameFilter}')\n| summarize Count=count() by DestinationServiceName,bin(TimeGenerated,{TimeRange:grain})\n",
+        "size": 0,
+        "title": "Apps being accessed over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "60",
+      "name": "zia-web-overview-panel-02-35ff4ee5"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| extend DestinationServiceName=tostring(AdditionalFields['Application'])\n| where EventResult =~ 'Success' and DestinationServiceName has_any ('Microsoft','Skype','SharePoint','OneDrive','Outlook','office.com','Microsoft Forms','Microsoft Azure')\n| summarize Count=count() by DestinationServiceName\n",
+        "size": 0,
+        "title": "Microsoft services",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "greenBlue",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-overview-panel-03-a333842f"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| extend devicemodel=tostring(AdditionalFields['DeviceModel'])\n| where isnotempty(devicemodel) and devicemodel !startswith 'NA'\n| summarize count() by devicemodel\n",
+        "size": 0,
+        "title": "Devices",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-overview-panel-04-c62eb857"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Success'\n| extend Location=tostring(AdditionalFields['Location'])\n| summarize Downloads=sum(todouble(DstBytes))/1024.0/1024.0,Uploads=sum(todouble(SrcBytes))/1024.0/1024.0 by Location\n",
+        "size": 0,
+        "title": "Upload and download data in MB, by location - click to filter",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "Location",
+        "exportParameterName": "LocationFilter",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Downloads",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Uploads",
+              "formatter": 4,
+              "formatOptions": {
+                "palette": "green",
+                "showIcon": true
+              }
+            }
+          ]
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-overview-panel-05-69eff7fe"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Success'\n| extend Location=tostring(AdditionalFields['Location'])\n| where '{LocationFilter}' == 'All' or Location == '{LocationFilter}'\n| summarize Downloads=sum(todouble(DstBytes))/1024.0/1024.0,Uploads=sum(todouble(SrcBytes))/1024.0/1024.0 by bin(TimeGenerated,{TimeRange:grain})\n",
+        "size": 0,
+        "title": "Upload and download data in MB over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-overview-panel-06-7656b354"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let data=materialize(\n_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where isnotempty(NetworkApplicationProtocol));\nlet appData=data\n| extend ApplicationProtocol=NetworkApplicationProtocol\n| summarize TotalCount=count() by ApplicationProtocol\n| join kind=inner (data | extend ApplicationProtocol=NetworkApplicationProtocol | make-series Trend=count() default=0 on TimeGenerated in range({TimeRange:start},{TimeRange:end},{TimeRange:grain}) by ApplicationProtocol) on ApplicationProtocol\n| extend Id=strcat('protocol-',hash_sha256(ApplicationProtocol)),Name=ApplicationProtocol,Type='ApplicationProtocol',ParentId=''\n| project Id,Name,Type,['ApplicationProtocol Count']=TotalCount,Trend,ParentId;\nlet methodData=data\n| where isnotempty(HttpRequestMethod)\n| extend ApplicationProtocol=NetworkApplicationProtocol,RequestMethod=HttpRequestMethod\n| summarize TotalCount=count() by ApplicationProtocol,RequestMethod\n| join kind=inner (data | where isnotempty(HttpRequestMethod) | extend ApplicationProtocol=NetworkApplicationProtocol,RequestMethod=HttpRequestMethod | make-series Trend=count() default=0 on TimeGenerated in range({TimeRange:start},{TimeRange:end},{TimeRange:grain}) by ApplicationProtocol,RequestMethod) on ApplicationProtocol,RequestMethod\n| extend Id=strcat('method-',hash_sha256(strcat(ApplicationProtocol,'|',RequestMethod))),Name=RequestMethod,Type='RequestMethod',ParentId=strcat('protocol-',hash_sha256(ApplicationProtocol))\n| project Id,Name,Type,['ApplicationProtocol Count']=TotalCount,Trend,ParentId;\nunion methodData,appData\n| order by ['ApplicationProtocol Count'] desc,Name asc\n",
+        "size": 0,
+        "title": "Protocols and methods",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Id",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "ApplicationProtocol Count",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "gray",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 9,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blueDark",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "hierarchySettings": {
+            "idColumn": "Id",
+            "parentColumn": "ParentId",
+            "treeType": 0,
+            "expanderColumn": "Name"
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "70",
+      "name": "zia-web-overview-panel-07-d533d111"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Success' and isnotempty(HttpRequestMethod) and HttpRequestMethod != 'None'\n| summarize count() by RequestMethod=HttpRequestMethod\n",
+        "size": 0,
+        "title": "Allowed HTTP methods",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "30",
+      "name": "zia-web-overview-panel-08-b48c808f"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Failure' and tostring(AdditionalFields['Location']) =~ 'Road Warrior'\n| summarize URLS_BLOCKED=count() by bin(TimeGenerated,{TimeRange:grain}),Activity=EventResultDetails\n",
+        "size": 0,
+        "title": "Block reasons for road warriors",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-web-overview-panel-09-eaed7cf0"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\r\n### Block actvities"
+      },
+      "name": "zia-web-overview-section-11"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| extend DstFQDN=coalesce(tostring(column_ifexists('DstFQDN','')),tostring(column_ifexists('DstFQDN_string','')),tostring(column_ifexists('DstFQDN_dynamic','')),tostring(AdditionalFields['DstFQDN']),tostring(parse_url(Url).Host))\n| where EventResult =~ 'Failure' and isnotempty(DstFQDN)\n| summarize Count=count() by DestinationHostName=DstFQDN\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked domains for HTTP/S requests",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "DestinationHostName",
+        "exportParameterName": "DestinationHostName",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "coldHot",
+                "showIcon": true
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "DestinationHostName",
+              "label": "Destination Host Name"
+            }
+          ]
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-overview-panel-10-9dca9f30"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Failure' and isnotempty(SrcUsername)\n| summarize Count=count() by SourceUserName=SrcUsername\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked users for HTTP/S requests",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "SourceUserName",
+        "exportParameterName": "SourceUserName",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "coldHot",
+                "showIcon": true
+              }
+            }
+          ],
+          "rowLimit": 1000
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-overview-panel-11-fd811b11"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Failure'\n| summarize Count=count() by Activity=EventResultDetails\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top Block Reasons for HTTP/S Requests",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "Activity",
+        "exportParameterName": "Activity",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "coldHot",
+                "showIcon": true
+              }
+            }
+          ]
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-overview-panel-12-d3a01b69"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where EventResult =~ 'Failure'\n| extend DestinationHostName=coalesce(tostring(column_ifexists('DstFQDN','')),tostring(column_ifexists('DstFQDN_string','')),tostring(column_ifexists('DstFQDN_dynamic','')),tostring(AdditionalFields['DstFQDN']),tostring(parse_url(Url).Host)),SourceUserName=SrcUsername,Activity=EventResultDetails,DestinationIP=DstIpAddr,Location=tostring(AdditionalFields['Location'])\n| where ('{DestinationHostName}' == 'All' or DestinationHostName == '{DestinationHostName}') and ('{SourceUserName}' == 'All' or SourceUserName == '{SourceUserName}') and ('{Activity}' == 'All' or Activity == '{Activity}')\n| summarize Count=count() by DestinationHostName,SourceUserName,Activity,DestinationIP,Location\n| order by Count desc\n",
+        "size": 0,
+        "title": "Block activities summary",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Count",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "name": "zia-web-overview-panel-13-b0420fdc"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-web-overview",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

@@ -1,0 +1,46 @@
+id: 6118ee7a-9cbc-4fcf-a96d-b1e680cdddb0
+name: ASIM - Zscaler Unexpected Event Count of Rejects by Policy (Zscaler ZPA)
+description: |
+  'Detects an unexpected event count of Zscaler Private Access (ZPA) connection attempts rejected by policy
+  for a single user. A high volume of policy-based rejections can indicate an attempt to reach applications
+  the user is not entitled to, a misconfigured client, or reconnaissance activity.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - Unexpected event count of rejects by
+  policy" (original id 593e3e2a-43ce-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Network Session
+  normalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. The raw EventResult value
+  "REJECTED_BY_POLICY" is normalized to EventResult == "Failure" with DvcAction in ("Deny", "Drop"); the
+  original raw detail string is expected to be preserved in EventOriginalResultDetails for drill-down.
+  DstUserName in the raw ZPAEvent table is mapped to SrcUsername in the Network Session schema, since it
+  identifies the connecting (source) user rather than the destination application.'
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1078
+  - T1133
+query: |
+  let threshold = 1000;
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where EventResult == "Failure"
+  | where DvcAction in ("Deny", "Drop")
+  // Optional: narrow to the raw ZPA policy-rejection detail if preserved by the pipeline
+  // | where EventOriginalResultDetails has "REJECTED_BY_POLICY"
+  | summarize rejected = count() by EventResult, SrcUsername
+  | where rejected > threshold
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+kind: Scheduled

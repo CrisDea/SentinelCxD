@@ -1,0 +1,31 @@
+id: 018e11f4-4627-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Users Access Groups (Zscaler ZPA)
+description: |
+  Shows the ZPA application groups observed for each connecting user. AppGroup is a
+  vendor-specific ZPA dimension and must be retained as AdditionalFields.AppGroup.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | extend ZPA = todynamic(AdditionalFields)
+  | extend ApplicationGroup = tostring(ZPA.AppGroup)
+  | where isnotempty(SrcUsername) and isnotempty(ApplicationGroup)
+  | summarize ApplicationGroups = make_set(ApplicationGroup, 1000), EventCount = count() by SrcUsername
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+

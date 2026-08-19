@@ -1,0 +1,51 @@
+id: 2ce16795-5e6c-4b86-b8f3-1a01ee49ae11
+name: ASIM - Zscaler Unexpected Update Operation (Zscaler ZPA)
+description: |
+  'Detects an unexpected version transition recorded in a Zscaler Private Access (ZPA) admin-portal
+  configuration change. The old and new object values are parsed for expectedVersion/currentVersion pairs
+  and compared to flag downgrades or otherwise unexpected version values, which can indicate tampering with
+  ZPA App Connector or client configuration.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - Unexpected update operation"
+  (original id 672e2846-4226-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Audit Event normalized
+  schema (_Im_AuditEvent) instead of the raw ZPAEvent table. AuditOperationType, AuditOldValue and
+  AuditNewValue in the raw ZPAEvent table map to Operation, OldValue and NewValue in the Audit Event schema.
+  The original entity mapping used a Process entity populated from the operation name, which has no standard
+  schema equivalent and was not a true process identifier; it has been replaced with an Account entity
+  mapped from ActorUsername (the admin who performed the change), which the Audit Event schema exposes
+  natively. As in the upstream rule, this analytic evaluates every audit event with a non-empty Operation and
+  computes VersionCheck for triage; it does not filter on VersionCheck so that all configuration-object
+  changes remain visible to the analyst.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimAuditEvent
+    dataTypes:
+      - _Im_AuditEvent
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_AuditEvent
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where isnotempty(Operation)
+  | extend ExpectedVersion1 = extract(@'(expectedVersion":")([0-9]+)\.([0-9]+\.[0-9]+)', 2, OldValue)
+  | extend ExpectedVersion2 = extract(@'(expectedVersion":")([0-9]+)\.([0-9]+\.[0-9]+)', 3, OldValue)
+  | extend NewVersion1 = extract(@'("currentVersion":")([0-9]+)\.([0-9]+\.[0-9]+)', 2, NewValue)
+  | extend NewVersion2 = extract(@'("currentVersion":")([0-9]+)\.([0-9]+\.[0-9]+)', 3, NewValue)
+  | extend Comparision1 = iff(tolong(ExpectedVersion2) > tolong(NewVersion2), 'Unexpected version', 'Expected version')
+  | extend VersionCheck = iff(tolong(ExpectedVersion1) > tolong(NewVersion1), 'Unexpected version', Comparision1)
+  | project-away ExpectedVersion1, ExpectedVersion2, NewVersion1, NewVersion2, Comparision1
+  | extend AccountCustomEntity = ActorUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+kind: Scheduled

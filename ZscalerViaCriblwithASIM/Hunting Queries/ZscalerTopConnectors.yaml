@@ -1,0 +1,33 @@
+id: 26d5244a-462f-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Top Connectors (Zscaler ZPA)
+description: |
+  Shows the 20 ZPA App Connectors responsible for the most normalized network bytes.
+  Connector is a vendor-specific ZPA identifier retained as AdditionalFields.Connector;
+  byte volume is read from the standard ASIM NetworkBytes field.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | extend ZPA = todynamic(AdditionalFields)
+  | extend Connector = tostring(ZPA.Connector)
+  | where isnotempty(Connector)
+  | summarize TotalBytes = sum(tolong(NetworkBytes)), SessionCount = count() by Connector
+  | top 20 by TotalBytes desc
+  | extend ProcessCustomEntity = Connector
+entityMappings:
+  - entityType: Process
+    fieldMappings:
+      - identifier: ProcessId
+        columnName: ProcessCustomEntity
+version: 1.0.0
+

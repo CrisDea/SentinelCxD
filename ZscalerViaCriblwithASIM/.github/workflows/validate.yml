@@ -1,0 +1,58 @@
+name: Validate Sentinel content pack
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate portable artifacts
+        shell: pwsh
+        run: |
+          az bicep version
+          .\scripts\Validate-Pack.ps1 -SkipLiveKql
+
+  windows-powershell-51:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Parse the deployment script with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.\scripts\Deploy-Pack.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+          }
+
+      - name: Scan for committed secret values
+        shell: pwsh
+        run: |
+          $patterns = 'client_secret\s*[:=]\s*["''][^@<]', `
+            'access_token\s*[:=]\s*["''][A-Za-z0-9]'
+          foreach ($pattern in $patterns) {
+            $matches = Get-ChildItem -Recurse -File |
+              Where-Object FullName -NotMatch '\\.git\\' |
+              Select-String -Pattern $pattern
+            if ($matches) {
+              throw "Potential secret value detected."
+            }
+          }

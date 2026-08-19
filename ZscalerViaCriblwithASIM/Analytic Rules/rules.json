@@ -1,0 +1,581 @@
+[
+  {
+    "id": "d501c4dd-cc45-4a87-a0b6-e97329d381e7",
+    "name": "ASIM - Discord CDN Risky File Download (Zscaler ZIA)",
+    "displayName": "ASIM - Discord CDN Risky File Download (Zscaler ZIA)",
+    "description": "'Identifies callouts to Discord CDN addresses for risky file extensions. This detection triggers when a\ncallout for a risky file is made to a Discord server that has only been seen once in the environment.\nUnique Discord servers are identified using the server ID embedded in the request URL (DiscordServerId in\nthe query). Discord CDN has been used in multiple campaigns to download additional payloads.\nAdapted from the upstream Zscaler Internet Access rule \"Discord CDN Risky File Download\"\n(original id 010bd98c-a6be-498c-bdcd-502308c0fdae) to use the ASIM Web Session normalized schema\n(_Im_WebSession) instead of CommonSecurityLog, so it works with any source normalized to ASIM,\nincluding a Cribl Stream pipeline that maps Zscaler ZIA logs to _Im_WebSession.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "let connectionThreshold = 1;\nlet riskyExtensions = dynamic([\".bin\", \".exe\", \".dll\", \".msi\"]);\n_Im_WebSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"ZIA\"\n| where Url has_any (\"media.discordapp.net\", \"cdn.discordapp.com\")\n| where Url has \"attachments\"\n| where DvcAction != \"Deny\"\n| extend DiscordServerId = extract(@\"/attachments/([0-9]+)/\", 1, Url)\n| where isnotempty(DiscordServerId)\n| summarize\n    dcount(Url),\n    make_set(SrcUsername),\n    make_set(SrcIpAddr),\n    make_set(Url),\n    min(TimeGenerated),\n    max(TimeGenerated),\n    make_set(DvcAction)\n    by DiscordServerId\n| where dcount_Url <= connectionThreshold\n| mv-expand set_SrcUsername to typeof(string), set_Url to typeof(string), set_DvcAction to typeof(string), set_SrcIpAddr to typeof(string)\n| summarize by DiscordServerId, dcount_Url, set_SrcUsername, min_TimeGenerated, max_TimeGenerated, set_DvcAction, set_SrcIpAddr, set_Url\n| project\n    StartTime = min_TimeGenerated,\n    EndTime = max_TimeGenerated,\n    DeviceActionTaken = set_DvcAction,\n    SourceUser = set_SrcUsername,\n    SourceIP = set_SrcIpAddr,\n    RequestUrl = set_Url\n| where RequestUrl has_any (riskyExtensions)\n",
+    "queryFrequency": "P1D",
+    "queryPeriod": "P1D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "CommandAndControl"
+    ],
+    "techniques": [
+      "T1071"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "SourceUser"
+          }
+        ]
+      },
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "SourceIP"
+          }
+        ]
+      },
+      {
+        "entityType": "URL",
+        "fieldMappings": [
+          {
+            "identifier": "Url",
+            "columnName": "RequestUrl"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimWebSession",
+        "dataTypes": [
+          "_Im_WebSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "DiscordCDNRiskyDownload.yaml"
+  },
+  {
+    "id": "f6ad442c-2201-4d9d-a8bf-929243cb2a4a",
+    "name": "ASIM - Request for Single Resource on Domain (Zscaler ZIA)",
+    "displayName": "ASIM - Request for Single Resource on Domain (Zscaler ZIA)",
+    "description": "'Looks for connections to a domain where only a single resource is requested. This is unusual because most\nmodern web applications require additional resources (scripts, images, style sheets, and so on) beyond the\nfirst request. This pattern is often associated with malware beaconing or with tracking URLs delivered in\nemail. Developed for Zscaler but applicable to any outbound web logging normalized to ASIM.\nAdapted from the upstream Zscaler Internet Access rule \"Request for single resource on domain\"\n(original id 4d500e6d-c984-43a3-9f39-7edec8dcc04d) to use the ASIM Web Session normalized schema\n(_Im_WebSession) instead of CommonSecurityLog, so it works with any source normalized to ASIM,\nincluding a Cribl Stream pipeline that maps Zscaler ZIA logs to _Im_WebSession.'",
+    "severity": "Low",
+    "enabled": true,
+    "query": "let scriptExtensions = dynamic([\".php\", \".aspx\", \".asp\", \".cfml\"]);\n// The number of distinct URLs seen for the domain; higher = less likely to be suspicious\nlet uriThreshold = 1;\n_Im_WebSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"ZIA\"\n// Only look at connections that were allowed through the web proxy\n| where DvcAction == \"Allow\"\n// Only look where some data was actually exchanged\n| where SrcBytes > 0 and DstBytes > 0\n| extend Domain = iff(countof(DstHostname, '.') >= 2, strcat(split(DstHostname, '.')[-2], '.', split(DstHostname, '.')[-1]), DstHostname)\n| extend GetData = iff(Url has \"?\", 1, 0)\n| summarize\n    StartTimeUtc = min(TimeGenerated),\n    EndTimeUtc = max(TimeGenerated),\n    make_list(Url),\n    make_list(DstIpAddr),\n    make_list(SrcIpAddr),\n    numOfConnections = count(),\n    make_set(HttpRequestMethod),\n    max(GetData),\n    max(HttpReferrer)\n    by Domain\n// Determine the number of distinct URLs visited for the domain\n| extend destinationURI = arraylength(list_Url)\n| where destinationURI <= uriThreshold\n| where tostring(list_Url) has_any (scriptExtensions)\n// Remove matches with a referrer (legitimate click-through browsing traffic)\n| where isempty(max_HttpReferrer)\n// Keep requests where data was transferred, either via a GET with parameters or a POST\n| where set_HttpRequestMethod has \"POST\" or max_GetData == 1\n// Defeat email click tracking; may increase false negatives while decreasing false positives\n| where tostring(list_Url) !has \"click\" and set_HttpRequestMethod !has \"GET\"\n| mv-expand list_Url, list_DstIpAddr\n| extend RequestUrl = tostring(list_Url), DestinationIP = tostring(list_DstIpAddr), ClientIP = tostring(list_SrcIpAddr)\n| project-away list_Url, list_DstIpAddr, list_SrcIpAddr, destinationURI, Domain, StartTimeUtc, EndTimeUtc, max_GetData, max_HttpReferrer\n",
+    "queryFrequency": "P1D",
+    "queryPeriod": "P1D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "CommandAndControl"
+    ],
+    "techniques": [
+      "T1102",
+      "T1071"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "DestinationIP"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimWebSession",
+        "dataTypes": [
+          "_Im_WebSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "Zscaler-LowVolumeDomainRequests.yaml"
+  },
+  {
+    "id": "bae077ed-775b-404f-ad1e-fb70e55451a6",
+    "name": "ASIM - Zscaler Shared ZPA Session (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Shared ZPA Session (Zscaler ZPA)",
+    "description": "'Detects a shared Zscaler Private Access (ZPA) session, that is, the same user establishing a new session\nfrom a different source IP address before their previous session has ended. This can indicate credential\nsharing or session hijacking.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Shared ZPA session\"\n(original id 40a98355-0e52-479f-8c91-4ab659cba878, ZPAEvent table) to use the ASIM Authentication\nnormalized schema (_Im_Authentication) instead of the raw ZPAEvent table. ZPA session establishment and\ntermination is treated as Logon/Logoff activity for the connecting user (SrcUserName in the raw ZPAEvent\ntable is mapped to TargetUsername in the Authentication schema, since it identifies the user who signed\nin). Assumes a Cribl Stream pipeline maps ZPA session-open events to EventType \"Logon\" and session-close\nevents to EventType \"Logoff\" in _Im_Authentication.\nOptimized to invoke the _Im_Authentication unifying parser exactly once per execution: it is materialized\ninto a single bounded result set (materialize(), filtered to the Zscaler ZPA product predicate) and the\nopen-session and closed-session branches are both derived from that materialized set, rather than each\nquerying _Im_Authentication directly. Referencing a unifying ASIM parser more than once in the same query\ncauses the engine to re-expand the underlying union of source-specific parsers for every reference, which\ncan exceed the Log Analytics relational operator tree complexity limit (CRT0015). This is a query-plan\noptimization only; detection intent, thresholds, and entity mappings are unchanged.'",
+    "severity": "High",
+    "enabled": true,
+    "query": "// Materialize the ASIM Authentication parser once, bounded to the Zscaler ZPA product predicate, so the\n// open-session and closed-session branches below reuse the same result set instead of each triggering a\n// separate expansion of the underlying unifying parser.\nlet AuthEvents = materialize(\n    _Im_Authentication\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n);\nlet open_sessions =\nAuthEvents\n| where EventType == \"Logon\" and EventResult == \"Success\"\n| summarize timestampstart = min(TimeGenerated) by TargetUsername, SrcIpAddr\n| sort by timestampstart asc;\nlet closed_sessions =\nAuthEvents\n| where TimeGenerated > ago(1h)\n| where EventType == \"Logoff\"\n| summarize timestampend = max(TimeGenerated) by TargetUsername, SrcIpAddr\n| sort by timestampend asc;\nopen_sessions\n| join (closed_sessions) on TargetUsername\n| sort by TargetUsername, timestampstart asc\n| extend prev_session_closetime = prev(timestampend, 1)\n| extend prev_session_starttime = prev(timestampstart, 1)\n| extend PreviousSrcIpAddr = prev(SrcIpAddr, 1)\n| extend prev_sessionuser = prev(TargetUsername, 1)\n| where TargetUsername == prev_sessionuser\n| where SrcIpAddr != PreviousSrcIpAddr\n| where prev_session_closetime > timestampstart\n| project TargetUsername, SrcIpAddr, PreviousSrcIpAddr\n| extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = TargetUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT24H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1078",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      },
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "IPCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimAuthentication",
+        "dataTypes": [
+          "_Im_Authentication"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerSharedZPASession.yaml"
+  },
+  {
+    "id": "6118ee7a-9cbc-4fcf-a96d-b1e680cdddb0",
+    "name": "ASIM - Zscaler Unexpected Event Count of Rejects by Policy (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Unexpected Event Count of Rejects by Policy (Zscaler ZPA)",
+    "description": "'Detects an unexpected event count of Zscaler Private Access (ZPA) connection attempts rejected by policy\nfor a single user. A high volume of policy-based rejections can indicate an attempt to reach applications\nthe user is not entitled to, a misconfigured client, or reconnaissance activity.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Unexpected event count of rejects by\npolicy\" (original id 593e3e2a-43ce-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. The raw EventResult value\n\"REJECTED_BY_POLICY\" is normalized to EventResult == \"Failure\" with DvcAction in (\"Deny\", \"Drop\"); the\noriginal raw detail string is expected to be preserved in EventOriginalResultDetails for drill-down.\nDstUserName in the raw ZPAEvent table is mapped to SrcUsername in the Network Session schema, since it\nidentifies the connecting (source) user rather than the destination application.'",
+    "severity": "High",
+    "enabled": true,
+    "query": "let threshold = 1000;\n_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where EventResult == \"Failure\"\n| where DvcAction in (\"Deny\", \"Drop\")\n// Optional: narrow to the raw ZPA policy-rejection detail if preserved by the pipeline\n// | where EventOriginalResultDetails has \"REJECTED_BY_POLICY\"\n| summarize rejected = count() by EventResult, SrcUsername\n| where rejected > threshold\n| extend AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT1H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1078",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerUnexpectedCountEventResult.yaml"
+  },
+  {
+    "id": "837730b5-852d-4382-9ff6-e21476fc5b69",
+    "name": "ASIM - Zscaler Forbidden Countries (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Forbidden Countries (Zscaler ZPA)",
+    "description": "'Detects suspicious Zscaler Private Access (ZPA) connections established from countries that are not\nexpected to originate connections to the environment.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Forbidden countries\"\n(original id b3d112b4-3e1e-11ec-9bbc-0242ac130002, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nDvcAction == \"Allow\" (the ASIM enumerated value for a permitted session), and DstUserName in the raw\nZPAEvent table is mapped to SrcUsername, since it identifies the connecting (source) user.'",
+    "severity": "High",
+    "enabled": true,
+    "query": "let bl_countries = dynamic(['CH', 'RU']); //List of countries from which you do not expect ZPA connections\n_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where DvcAction == \"Allow\"\n| where SrcGeoCountry in~ (bl_countries)\n| extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT1H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1190",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      },
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "IPCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerUnexpectedCountries.yaml"
+  },
+  {
+    "id": "2ce16795-5e6c-4b86-b8f3-1a01ee49ae11",
+    "name": "ASIM - Zscaler Unexpected Update Operation (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Unexpected Update Operation (Zscaler ZPA)",
+    "description": "'Detects an unexpected version transition recorded in a Zscaler Private Access (ZPA) admin-portal\nconfiguration change. The old and new object values are parsed for expectedVersion/currentVersion pairs\nand compared to flag downgrades or otherwise unexpected version values, which can indicate tampering with\nZPA App Connector or client configuration.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Unexpected update operation\"\n(original id 672e2846-4226-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Audit Event normalized\nschema (_Im_AuditEvent) instead of the raw ZPAEvent table. AuditOperationType, AuditOldValue and\nAuditNewValue in the raw ZPAEvent table map to Operation, OldValue and NewValue in the Audit Event schema.\nThe original entity mapping used a Process entity populated from the operation name, which has no standard\nschema equivalent and was not a true process identifier; it has been replaced with an Account entity\nmapped from ActorUsername (the admin who performed the change), which the Audit Event schema exposes\nnatively. As in the upstream rule, this analytic evaluates every audit event with a non-empty Operation and\ncomputes VersionCheck for triage; it does not filter on VersionCheck so that all configuration-object\nchanges remain visible to the analyst.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "_Im_AuditEvent\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where isnotempty(Operation)\n| extend ExpectedVersion1 = extract(@'(expectedVersion\":\")([0-9]+)\\.([0-9]+\\.[0-9]+)', 2, OldValue)\n| extend ExpectedVersion2 = extract(@'(expectedVersion\":\")([0-9]+)\\.([0-9]+\\.[0-9]+)', 3, OldValue)\n| extend NewVersion1 = extract(@'(\"currentVersion\":\")([0-9]+)\\.([0-9]+\\.[0-9]+)', 2, NewValue)\n| extend NewVersion2 = extract(@'(\"currentVersion\":\")([0-9]+)\\.([0-9]+\\.[0-9]+)', 3, NewValue)\n| extend Comparision1 = iff(tolong(ExpectedVersion2) > tolong(NewVersion2), 'Unexpected version', 'Expected version')\n| extend VersionCheck = iff(tolong(ExpectedVersion1) > tolong(NewVersion1), 'Unexpected version', Comparision1)\n| project-away ExpectedVersion1, ExpectedVersion2, NewVersion1, NewVersion2, Comparision1\n| extend AccountCustomEntity = ActorUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT1H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1190",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimAuditEvent",
+        "dataTypes": [
+          "_Im_AuditEvent"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerUnexpectedUpdateOperation.yaml"
+  },
+  {
+    "id": "48408334-d6ab-45eb-a3b2-6b16e9c9a8fa",
+    "name": "ASIM - Zscaler Connections by Dormant User (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Connections by Dormant User (Zscaler ZPA)",
+    "description": "'Detects Zscaler Private Access (ZPA) sign-ins by a dormant user, that is, a user who signs in during the\ncurrent evaluation window but was not observed signing in successfully during the preceding ~14-day\nbaseline window. Sign-in activity from a dormant account can indicate use of a stale or compromised\ncredential.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Connections by dormant user\"\n(original id 66bc77ee-3e45-11ec-9bbc-0242ac130002, ZPAEvent table) to use the ASIM Authentication\nnormalized schema (_Im_Authentication) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nEventType == \"Logon\" and EventResult == \"Success\", and DstUserName in the raw ZPAEvent table is mapped to\nTargetUsername, since it identifies the signed-in user.\nOptimized to invoke the _Im_Authentication unifying parser exactly once per execution: the parser is\nmaterialized into a single bounded result set (materialize(), filtered to the 14-day lookback and the\nZscaler ZPA logon/success predicate), and the baseline and current branches are both derived from that\nmaterialized set, rather than each referencing _Im_Authentication directly. Referencing a unifying ASIM\nparser more than once in the same query causes the engine to re-expand the underlying union of\nsource-specific parsers for every reference, which previously caused this rule to fail Log Analytics\ncompilation with CRT0015 (relational operator tree complexity exceeded).\nCorrectness fix (security review): the query previously derived the \"active users\" baseline from the same\nfull materialized dataset that the detection branch also scanned, so any user present in the current\nwindow was, by construction, also present in the baseline (its own current sign-in was part of the same\nset), and the \"!in~ (make_list(...))\" filter could never match - the rule was effectively a silent\nno-op. The query now splits the single materialized result set into two non-overlapping time slices:\nbaseline = TimeGenerated between (ago(14d) .. ago(1h)) (approximately the preceding 14 days, ending where\nthe current slice begins) and current = TimeGenerated > ago(1h) (the most recent hour, matching\nqueryFrequency). Both windows fit inside the existing 14-day queryPeriod, so no schedule change was\nrequired. A leftanti join keyed on TargetUsername returns only users present in the current slice with no\nmatching TargetUsername in the baseline slice, replacing the prior global make_list()/\"!in~\" comparison\n(which, even before the overlap bug, compared against a single flattened list rather than doing a\nper-user check) with a genuine per-user, non-overlapping-window comparison. Detection intent, severity,\nthresholds, and entity mappings are unchanged; the baseline window is now bounded to (ago(14d) ..\nago(1h)) instead of a full 14 days, a difference of one hour that is immaterial to the \"not seen in the\nlast 14 days\" detection intent.'",
+    "severity": "High",
+    "enabled": true,
+    "query": "let dt_lookback = 14d;\nlet dt_current = 1h;\n// Materialize the ASIM Authentication parser once, bounded to the lookback window and the Zscaler ZPA\n// logon/success predicate, so the baseline and current branches below reuse the same result set instead\n// of each triggering a separate expansion of the underlying unifying parser (which previously caused\n// CRT0015).\nlet AuthEvents = materialize(\n    _Im_Authentication\n    | where TimeGenerated > ago(dt_lookback)\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n    | where EventType == \"Logon\" and EventResult == \"Success\"\n);\n// Baseline: distinct users who signed in during the ~14-day window preceding the current slice.\nlet baseline =\nAuthEvents\n| where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))\n| summarize by TargetUsername;\n// Current: distinct users who signed in during the most recent hour (matches queryFrequency), so\n// baseline and current never overlap.\nlet current =\nAuthEvents\n| where TimeGenerated > ago(dt_current)\n| summarize by TargetUsername;\n// A user in the current slice with no matching TargetUsername in the baseline slice is dormant: they had\n// no successful sign-in during the preceding ~14 days.\ncurrent\n| join kind=leftanti (baseline) on TargetUsername\n| extend AccountCustomEntity = TargetUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "P14D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "Persistence"
+    ],
+    "techniques": [
+      "T1078"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimAuthentication",
+        "dataTypes": [
+          "_Im_Authentication"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAConnectionsByDormantUser.yaml"
+  },
+  {
+    "id": "37d89779-cad6-42b3-97e0-68321a7aefdc",
+    "name": "ASIM - Zscaler ZPA Connections by New User (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler ZPA Connections by New User (Zscaler ZPA)",
+    "description": "'Detects Zscaler Private Access (ZPA) sign-ins by a user who signs in during the current evaluation\nwindow but was not observed signing in during the preceding ~14-day baseline window. A first-seen user\nsign-in can indicate onboarding of a new account, but can also indicate use of a newly created or\ncompromised identity.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - ZPA connections by new user\"\n(original id 236a7ec1-0120-40f2-a157-c1a72dde8bcb, ZPAEvent table) to use the ASIM Authentication\nnormalized schema (_Im_Authentication) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nEventType == \"Logon\" and EventResult == \"Success\", and DstUserName in the raw ZPAEvent table is mapped to\nTargetUsername, since it identifies the signed-in user.\nOptimized to invoke the _Im_Authentication unifying parser exactly once per execution: it is materialized\ninto a single bounded result set (materialize(), filtered to the 14-day lookback and the Zscaler ZPA\nlogon/success predicate), and the baseline and current branches are both derived from that materialized\nset, rather than each referencing _Im_Authentication directly. Referencing a unifying ASIM parser more\nthan once in the same query causes the engine to re-expand the underlying union of source-specific\nparsers for every reference, which can exceed the Log Analytics relational operator tree complexity limit\n(CRT0015).\nCorrectness fix (security review): the query previously derived listUsers from the same full materialized\ndataset that the detection branch also scanned, so any user present in the current window was, by\nconstruction, already a member of listUsers (make_set(TargetUsername) over the identical rows), and the\n\"!in (listUsers)\" filter could never match - the rule was effectively a silent no-op. The query now splits\nthe single materialized result set into two non-overlapping time slices: baseline = TimeGenerated between\n(ago(14d) .. ago(1h)) (approximately the preceding 14 days, ending where the current slice begins) and\ncurrent = TimeGenerated > ago(1h) (the most recent hour, matching queryFrequency). Both windows fit inside\nthe existing 14-day queryPeriod, so no schedule change was required. A leftanti join keyed on\nTargetUsername returns only users present in the current slice with no matching TargetUsername in the\nbaseline slice, replacing the prior global make_set()/\"!in\" comparison with a genuine per-user,\nnon-overlapping-window comparison. Detection intent, severity, thresholds, and entity mappings are\nunchanged; the baseline window is now bounded to (ago(14d) .. ago(1h)) instead of a full 14 days, a\ndifference of one hour that is immaterial to the \"not seen in the last 14 days\" detection intent.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "let dt_lookback = 14d;\nlet dt_current = 1h;\n// Materialize the ASIM Authentication parser once, bounded to the lookback window and the Zscaler ZPA\n// logon/success predicate, so the baseline and current branches below reuse the same result set instead\n// of each triggering a separate expansion of the underlying unifying parser.\nlet AuthEvents = materialize(\n    _Im_Authentication\n    | where TimeGenerated > ago(dt_lookback)\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n    | where EventType == \"Logon\" and EventResult == \"Success\"\n);\n// Baseline: distinct users who signed in during the ~14-day window preceding the current slice.\nlet baseline =\nAuthEvents\n| where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))\n| summarize by TargetUsername;\n// Current: distinct users who signed in during the most recent hour (matches queryFrequency), so\n// baseline and current never overlap.\nlet current =\nAuthEvents\n| where TimeGenerated > ago(dt_current)\n| summarize by TargetUsername;\n// A user in the current slice with no matching TargetUsername in the baseline slice is new: they had no\n// sign-in during the preceding ~14 days.\ncurrent\n| join kind=leftanti (baseline) on TargetUsername\n| extend AccountCustomEntity = TargetUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "P14D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "Persistence"
+    ],
+    "techniques": [
+      "T1078"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimAuthentication",
+        "dataTypes": [
+          "_Im_Authentication"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAConnectionsByNewUser.yaml"
+  },
+  {
+    "id": "2b7d7546-a107-4bbe-92b4-c94658fa0223",
+    "name": "ASIM - Zscaler ZPA Connections from New Country (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler ZPA Connections from New Country (Zscaler ZPA)",
+    "description": "'Detects Zscaler Private Access (ZPA) connections from a country that has not been observed for the\nconnecting user during the preceding ~14-day baseline window. A first-seen source country for a user can\nindicate travel, use of an anonymizing proxy or VPN, or account compromise.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - ZPA connections from new country\"\n(original id c4902121-7a7e-44d1-810b-88d26db622ff, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nDvcAction == \"Allow\" for the baseline, and DstUserName in the raw ZPAEvent table is mapped to SrcUsername,\nsince it identifies the connecting (source) user. As in the upstream rule, the current-window query is not\nfiltered to DvcAction == \"Allow\", so both permitted and denied sessions are evaluated for new-country\nactivity.\nOptimized to invoke the _Im_NetworkSession unifying parser exactly once per execution: it is materialized\ninto a single bounded result set (materialize(), filtered to the 14-day lookback and the Zscaler ZPA\nproduct predicate), and the baseline and current branches are both derived from that materialized set,\npreserving the original asymmetric DvcAction filtering while avoiding a second parser expansion.\nReferencing a unifying ASIM parser more than once in the same query causes the engine to re-expand the\nunderlying union of source-specific parsers for every reference, which can exceed the Log Analytics\nrelational operator tree complexity limit (CRT0015).\nCorrectness fix (security review): the query previously (1) derived listCountries from the same full\n14-day dataset that the detection branch also scanned, so a country seen for a user in the current window\nwas, by construction, already part of that same 14-day set; and (2) projected away the SrcUsername grouping\ncolumn after make_set(), so \"SrcGeoCountry !in (listCountries)\" compared against a single flattened list of\nevery user's countries combined, rather than checking only the current row's own user - a user could be\nmasked from detection by a completely different user having connected from that country. The query now\nsplits the materialized result set into two non-overlapping time slices - baseline = TimeGenerated between\n(ago(14d) .. ago(1h)) (approximately the preceding 14 days, ending where the current slice begins, and\nrestricted to DvcAction == \"Allow\" as before) and current = TimeGenerated > ago(1h) (the most recent hour,\nmatching queryFrequency, unfiltered on DvcAction as before) - both of which fit inside the existing 14-day\nqueryPeriod, so no schedule change was required. A leftanti join keyed on (SrcUsername, SrcGeoCountry)\nreturns only (user, country) pairs present in the current slice with no matching pair in the baseline\nslice, so a country is only flagged as new for the specific user who connected from it, and a different\nuser history can no longer suppress the detection. Detection intent, severity, thresholds, and entity\nmappings are unchanged; the baseline window is now bounded to (ago(14d) .. ago(1h)) instead of a full 14\ndays, a difference of one hour that is immaterial to the \"not seen in the last 14 days\" detection intent.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "let dt_lookback = 14d;\nlet dt_current = 1h;\n// Materialize the ASIM Network Session parser once, bounded to the lookback window and the Zscaler ZPA\n// product predicate, so the baseline and current branches below reuse the same result set instead of each\n// triggering a separate expansion of the underlying unifying parser.\nlet NetworkEvents = materialize(\n    _Im_NetworkSession\n    | where TimeGenerated > ago(dt_lookback)\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n);\n// Baseline: distinct (user, country) pairs allowed during the ~14-day window preceding the current slice.\nlet baseline =\nNetworkEvents\n| where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))\n| where DvcAction == \"Allow\"\n| summarize by SrcUsername, SrcGeoCountry;\n// Current: distinct (user, country) pairs seen in the most recent hour (matches queryFrequency, not\n// filtered on DvcAction as in the upstream rule), so baseline and current never overlap.\nlet current =\nNetworkEvents\n| where TimeGenerated > ago(dt_current)\n| where isnotempty(SrcGeoCountry)\n| summarize by SrcUsername, SrcGeoCountry;\n// A (user, country) pair in the current slice with no matching pair in the baseline slice is new for that\n// specific user; keying the leftanti join on both SrcUsername and SrcGeoCountry ensures a different user's\n// history from that country cannot suppress this detection.\ncurrent\n| join kind=leftanti (baseline) on SrcUsername, SrcGeoCountry\n| extend AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "P14D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1190",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAConnectionsFromNewCountry.yaml"
+  },
+  {
+    "id": "ff199d91-a72c-416c-b06f-b730c87263cb",
+    "name": "ASIM - Zscaler ZPA Connections from New IP (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler ZPA Connections from New IP (Zscaler ZPA)",
+    "description": "'Detects Zscaler Private Access (ZPA) connections from a source IP address that has not been observed for\nthe connecting user during the preceding ~14-day baseline window. A first-seen source IP address for a\nuser can indicate a new device, use of a VPN or proxy, or account compromise.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - ZPA connections from new IP\"\n(original id 24f0779d-3927-403a-aac1-cc8791653606, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nDvcAction == \"Allow\" for the baseline, and DstUserName in the raw ZPAEvent table is mapped to SrcUsername,\nsince it identifies the connecting (source) user. As in the upstream rule, the current-window query is not\nfiltered to DvcAction == \"Allow\", so both permitted and denied sessions are evaluated for new-IP activity.\nOptimized to invoke the _Im_NetworkSession unifying parser exactly once per execution: it is materialized\ninto a single bounded result set (materialize(), filtered to the 14-day lookback and the Zscaler ZPA\nproduct predicate), and the baseline and current branches are both derived from that materialized set,\npreserving the original asymmetric DvcAction filtering while avoiding a second parser expansion.\nReferencing a unifying ASIM parser more than once in the same query causes the engine to re-expand the\nunderlying union of source-specific parsers for every reference, which can exceed the Log Analytics\nrelational operator tree complexity limit (CRT0015).\nCorrectness fix (security review): the query previously (1) derived listIPs from the same full 14-day\ndataset that the detection branch also scanned, so an IP seen for a user in the current window was, by\nconstruction, already part of that same 14-day set; and (2) projected away the SrcUsername grouping column\nafter make_set(), so \"SrcIpAddr !in (listIPs)\" compared against a single flattened list of every user's IPs\ncombined, rather than checking only the current row's own user - a user could be masked from detection by\na completely different user having connected from that IP address. The query now splits the materialized\nresult set into two non-overlapping time slices - baseline = TimeGenerated between (ago(14d) .. ago(1h))\n(approximately the preceding 14 days, ending where the current slice begins, and restricted to\nDvcAction == \"Allow\" as before) and current = TimeGenerated > ago(1h) (the most recent hour, matching\nqueryFrequency, unfiltered on DvcAction as before) - both of which fit inside the existing 14-day\nqueryPeriod, so no schedule change was required. A leftanti join keyed on (SrcUsername, SrcIpAddr) returns\nonly (user, IP) pairs present in the current slice with no matching pair in the baseline slice, so an IP\naddress is only flagged as new for the specific user who connected from it, and a different user's history\ncan no longer suppress the detection. Detection intent, severity, thresholds, and entity mappings are\nunchanged; the baseline window is now bounded to (ago(14d) .. ago(1h)) instead of a full 14 days, a\ndifference of one hour that is immaterial to the \"not seen in the last 14 days\" detection intent.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "let dt_lookback = 14d;\nlet dt_current = 1h;\n// Materialize the ASIM Network Session parser once, bounded to the lookback window and the Zscaler ZPA\n// product predicate, so the baseline and current branches below reuse the same result set instead of each\n// triggering a separate expansion of the underlying unifying parser.\nlet NetworkEvents = materialize(\n    _Im_NetworkSession\n    | where TimeGenerated > ago(dt_lookback)\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n);\n// Baseline: distinct (user, IP) pairs allowed during the ~14-day window preceding the current slice.\nlet baseline =\nNetworkEvents\n| where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))\n| where DvcAction == \"Allow\"\n| summarize by SrcUsername, SrcIpAddr;\n// Current: distinct (user, IP) pairs seen in the most recent hour (matches queryFrequency, not filtered\n// on DvcAction as in the upstream rule), so baseline and current never overlap.\nlet current =\nNetworkEvents\n| where TimeGenerated > ago(dt_current)\n| where isnotempty(SrcIpAddr)\n| summarize by SrcUsername, SrcIpAddr;\n// A (user, IP) pair in the current slice with no matching pair in the baseline slice is new for that\n// specific user; keying the leftanti join on both SrcUsername and SrcIpAddr ensures a different user's\n// history from that IP address cannot suppress this detection.\ncurrent\n| join kind=leftanti (baseline) on SrcUsername, SrcIpAddr\n| extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "P14D",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1078",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      },
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "IPCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAConnectionsFromNewIP.yaml"
+  },
+  {
+    "id": "0948c404-e1d9-4ff7-9edf-58abcfd18b59",
+    "name": "ASIM - Zscaler ZPA Connections Outside Operational Hours (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler ZPA Connections Outside Operational Hours (Zscaler ZPA)",
+    "description": "'Detects Zscaler Private Access (ZPA) connections established outside the defined operational hours window\n(08:00-19:00). Connections outside normal business hours can indicate automated tooling, an attacker in a\ndifferent time zone, or use of a compromised account outside the user''s normal working pattern.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - ZPA connections outside operational hours\"\n(original id 2859ad22-46c8-4cc7-ad7b-80ce0cba0af3, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == \"open\" is mapped to\nDvcAction == \"Allow\", and DstUserName in the raw ZPAEvent table is mapped to SrcUsername, since it\nidentifies the connecting (source) user. The raw LogTimestamp string field is replaced with the standard\nEventStartTime datetime field, removing the need to call todatetime() on a raw string. The upstream\n\"between\" hour range (19 .. 8) was inverted and always evaluated to an empty range; it has been replaced\nwith the logically equivalent \"!between (8 .. 19)\" so the rule actually flags connections outside the\n08:00-19:00 operational window, which is a direct, schema-driven correction to the original threshold\nlogic rather than a change in detection intent.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where DvcAction == \"Allow\"\n| where datetime_part(\"Hour\", EventStartTime) !between (8 .. 19)\n| summarize count() by SrcUsername\n| project SrcUsername\n| extend AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT1H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1190",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAConnectionsOutsideOperationalHours.yaml"
+  },
+  {
+    "id": "5871c1d2-e7be-44a0-a990-59b09a0d618e",
+    "name": "ASIM - Zscaler Unexpected ZPA Session Duration (Zscaler ZPA)",
+    "displayName": "ASIM - Zscaler Unexpected ZPA Session Duration (Zscaler ZPA)",
+    "description": "'Detects a Zscaler Private Access (ZPA) session whose duration exceeds an 8-hour threshold. An unusually\nlong-lived session can indicate an attacker maintaining persistent access, or a client that failed to\nproperly close its session.\nAdapted from the upstream Zscaler Private Access rule \"Zscaler - Unexpected ZPA session duration\"\n(original id e07846e0-43ad-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Network Session\nnormalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction \"open\"/\"close\" values,\nwhich have no equivalent in the ASIM enumerated DvcAction values (Allow/Deny/Drop/...), are mapped to\nEventSubType == \"Start\" and EventSubType == \"End\" respectively; ConnectionID in the raw ZPAEvent table is\nmapped to NetworkSessionId, the standard schema session correlation key; and DstUserName is mapped to\nSrcUsername, since it identifies the connecting (source) user. Assumes a Cribl Stream pipeline emits ZPA\nsession-open and session-close audit records as two _Im_NetworkSession rows sharing the same\nNetworkSessionId. If the pipeline instead emits a single row per completed session, the join below can be\nreplaced with a direct filter on the NetworkDuration field.\nOptimized to invoke the _Im_NetworkSession unifying parser exactly once per execution: it is materialized\ninto a single bounded result set (materialize(), filtered to the 24-hour lookback and the Zscaler ZPA\nproduct predicate) and both the open-session and closed-session branches are derived from that\nmaterialized set, rather than each querying _Im_NetworkSession directly. Referencing a unifying ASIM\nparser more than once in the same query causes the engine to re-expand the underlying union of\nsource-specific parsers for every reference, which can exceed the Log Analytics relational operator tree\ncomplexity limit (CRT0015). This is a query-plan optimization only; detection intent, thresholds, and\nentity mappings are unchanged.'",
+    "severity": "Medium",
+    "enabled": true,
+    "query": "let dt_lookBack = 24h;\nlet time_treshhold = timespan(08:00:00);\n// Materialize the ASIM Network Session parser once, bounded to the lookback window and the Zscaler ZPA\n// product predicate, so the open-session and closed-session branches below reuse the same result set\n// instead of each triggering a separate expansion of the underlying unifying parser.\nlet NetworkEvents = materialize(\n    _Im_NetworkSession\n    | where TimeGenerated > ago(dt_lookBack)\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n);\nlet open_sessions =\nNetworkEvents\n| where EventSubType == \"Start\"\n| summarize timestampstart = min(TimeGenerated) by SrcUsername, SrcIpAddr, NetworkSessionId\n| sort by timestampstart asc;\nlet closed_sessions =\nNetworkEvents\n| where EventSubType == \"End\"\n| summarize timestampend = max(TimeGenerated) by SrcUsername, SrcIpAddr, NetworkSessionId\n| sort by timestampend asc;\nopen_sessions\n| join (closed_sessions) on SrcUsername, SrcIpAddr, NetworkSessionId\n| extend duration = timestampend - timestampstart\n| where duration > time_treshhold\n| where SrcUsername !has \"ZPA LSS\"\n| sort by timestampstart asc\n| extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername\n",
+    "queryFrequency": "PT1H",
+    "queryPeriod": "PT24H",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0,
+    "suppressionEnabled": false,
+    "suppressionDuration": "PT5H",
+    "tactics": [
+      "InitialAccess"
+    ],
+    "techniques": [
+      "T1078",
+      "T1133"
+    ],
+    "entityMappings": [
+      {
+        "entityType": "Account",
+        "fieldMappings": [
+          {
+            "identifier": "Name",
+            "columnName": "AccountCustomEntity"
+          }
+        ]
+      },
+      {
+        "entityType": "IP",
+        "fieldMappings": [
+          {
+            "identifier": "Address",
+            "columnName": "IPCustomEntity"
+          }
+        ]
+      }
+    ],
+    "requiredDataConnectors": [
+      {
+        "connectorId": "ASimNetworkSession",
+        "dataTypes": [
+          "_Im_NetworkSession"
+        ]
+      }
+    ],
+    "kind": "Scheduled",
+    "version": "1.0.0",
+    "sourceFile": "ZscalerZPAUnexpectedSessionDuration.yaml"
+  }
+]

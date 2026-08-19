@@ -1,0 +1,242 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler ZIA Network, Firewall, and Tunnel Activity\n\nNetwork session activity for Zscaler Internet Access (ZIA) firewall and tunnel enforcement, normalized through ASIM `_Im_NetworkSession`. All queries filter on `EventVendor == 'Zscaler'` and use only standard ASIM fields."
+      },
+      "name": "intro"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "ca4fc171-b06a-4315-a04e-a3580e8d8923",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            }
+          },
+          {
+            "id": "9d966771-4302-4e11-bcb7-366461848be6",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id, name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let base = _Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler';\nunion isfuzzy=true\n    (base | summarize Count=count() | extend Metric='Total Sessions'),\n    (base | where DvcAction in~ ('Allow','Permit') | summarize Count=count() | extend Metric='Allowed Sessions'),\n    (base | where DvcAction in~ ('Deny','Block','Drop') | summarize Count=count() | extend Metric='Denied Sessions'),\n    (base | summarize Count=dcount(SrcIpAddr) | extend Metric='Unique Source IPs'),\n    (base | summarize Count=dcount(DstIpAddr) | extend Metric='Unique Destination IPs'),\n    (base | summarize Count=sum(NetworkBytes) | extend Metric='Total Bytes')\n| project Metric, Count\n",
+        "size": 3,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Metric",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "net-kpi"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| summarize SessionCount=count() by DvcAction, bin(TimeGenerated, 1h)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart"
+      },
+      "name": "net-trend"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(NetworkProtocol)\n| summarize SessionCount=count() by NetworkProtocol\n| top 10 by SessionCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "piechart"
+      },
+      "name": "net-protocol-pie"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(NetworkDirection)\n| summarize SessionCount=count() by NetworkDirection\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "piechart"
+      },
+      "name": "net-direction-pie"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Denied and Top Talker Detail"
+      },
+      "name": "net-detail-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where DvcAction in~ ('Deny', 'Block', 'Drop')\n| summarize DeniedCount=count() by DstIpAddr, DstPortNumber\n| top 10 by DeniedCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "net-top-denied"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(SrcIpAddr)\n| summarize SessionCount=count() by SrcIpAddr\n| top 10 by SessionCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "net-top-srcip"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(DstIpAddr)\n| summarize SessionCount=count() by DstIpAddr, DstPortNumber\n| top 10 by SessionCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "net-top-dstport"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| summarize TotalBytes=sum(NetworkBytes) by bin(TimeGenerated, 1h)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart"
+      },
+      "name": "net-bytes-trend"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(SrcIpAddr)\n| summarize TotalBytes=sum(NetworkBytes) by SrcIpAddr, DstIpAddr\n| top 10 by TotalBytes desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "net-top-talkers"
+    }
+  ],
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

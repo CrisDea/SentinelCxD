@@ -1,0 +1,233 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler ASIM Overview and Ingestion Health\n\nConsolidated view of Zscaler Internet Access (ZIA) and Zscaler Private Access (ZPA) activity normalized into Microsoft Sentinel through the Advanced Security Information Model (ASIM). All panels query the ASIM unifying parsers `_Im_WebSession`, `_Im_Dns`, `_Im_NetworkSession`, `_Im_Authentication`, and `_Im_AuditEvent` filtered to `EventVendor == 'Zscaler'`; no raw Zscaler or Cribl-specific tables are queried. Use this workbook to confirm the Cribl-to-ASIM pipeline is healthy before relying on the ZIA and ZPA detail workbooks."
+      },
+      "name": "intro"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "c19ff336-0729-4558-8e44-dbe78955ed98",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            }
+          },
+          {
+            "id": "1d7c0714-3996-4750-9fe8-76bd7a412cdd",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id, name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Ingestion Health\nConfirms that Cribl is delivering Zscaler events and that ASIM parsers are returning normalized rows."
+      },
+      "name": "ingestion-health-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | summarize Count=count()\n    | extend Metric = 'Web Sessions (ZIA)'),\n    (_Im_Dns\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | summarize Count=count()\n    | extend Metric = 'DNS Queries (ZIA)'),\n    (_Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | summarize Count=count()\n    | extend Metric = 'Network Sessions'),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | summarize Count=count()\n    | extend Metric = 'Authentication Events (ZPA)'),\n    (_Im_AuditEvent\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | summarize Count=count()\n    | extend Metric = 'Audit Events (ZPA)')\n| project Metric, Count\n",
+        "size": 3,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Metric",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "kpi-tiles"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where EventVendor =~ 'Zscaler'\n    | summarize LastEvent=max(TimeGenerated)\n    | extend Parser = '_Im_WebSession'),\n    (_Im_Dns\n    | where EventVendor =~ 'Zscaler'\n    | summarize LastEvent=max(TimeGenerated)\n    | extend Parser = '_Im_Dns'),\n    (_Im_NetworkSession\n    | where EventVendor =~ 'Zscaler'\n    | summarize LastEvent=max(TimeGenerated)\n    | extend Parser = '_Im_NetworkSession'),\n    (_Im_Authentication\n    | where EventVendor =~ 'Zscaler'\n    | summarize LastEvent=max(TimeGenerated)\n    | extend Parser = '_Im_Authentication'),\n    (_Im_AuditEvent\n    | where EventVendor =~ 'Zscaler'\n    | summarize LastEvent=max(TimeGenerated)\n    | extend Parser = '_Im_AuditEvent')\n| extend MinutesSinceLastEvent = datetime_diff('minute', now(), LastEvent)\n| extend IngestionStatus = case(\n    isnull(LastEvent), 'No data seen',\n    MinutesSinceLastEvent <= 60, 'Healthy',\n    MinutesSinceLastEvent <= 24 * 60, 'Delayed',\n    'Stale or not ingesting')\n| project Parser, LastEvent, MinutesSinceLastEvent, IngestionStatus\n| order by Parser asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "ingestion-health-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_WebSession'),\n    (_Im_Dns\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Dns'),\n    (_Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_NetworkSession'),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Authentication'),\n    (_Im_AuditEvent\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_AuditEvent')\n| summarize EventCount=count() by Parser, bin(TimeGenerated, 1h)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart"
+      },
+      "name": "volume-trend"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Event Volume by Product"
+      },
+      "name": "product-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_WebSession'),\n    (_Im_Dns\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Dns'),\n    (_Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_NetworkSession'),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Authentication'),\n    (_Im_AuditEvent\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_AuditEvent')\n| summarize EventCount=count() by Parser, EventProduct\n| order by EventCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "product-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_WebSession'),\n    (_Im_Dns\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Dns'),\n    (_Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_NetworkSession'),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_Authentication'),\n    (_Im_AuditEvent\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | extend Parser = '_Im_AuditEvent')\n| summarize EventCount=count() by Parser\n| order by EventCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "piechart"
+      },
+      "name": "parser-share-pie"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Top Entities Across Zscaler Data"
+      },
+      "name": "entities-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project SrcIpAddr),\n    (_Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project SrcIpAddr),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project SrcIpAddr)\n| where isnotempty(SrcIpAddr)\n| summarize EventCount=count() by SrcIpAddr\n| top 10 by EventCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "top-source-ip"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "union isfuzzy=true\n    (_Im_WebSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project Username = SrcUsername),\n    (_Im_Authentication\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project Username = TargetUsername),\n    (_Im_AuditEvent\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler'\n    | project Username = ActorUsername)\n| where isnotempty(Username)\n| summarize EventCount=count() by Username\n| top 10 by EventCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "top-users"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Related Workbooks\n- **Zscaler ZIA Web and DNS Activity** (`ZscalerZIAWebDns.json`)\n- **Zscaler ZIA Network Activity** (`ZscalerZIANetwork.json`)\n- **Zscaler ZPA Access Activity** (`ZscalerZPAAccess.json`)\n\nSee `README.md` in this folder for full coverage notes and documented exclusions."
+      },
+      "name": "related-links"
+    }
+  ],
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

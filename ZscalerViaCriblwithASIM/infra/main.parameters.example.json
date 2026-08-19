@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspaceName": {
+      "value": "<sentinel-workspace-name>"
+    },
+    "approverUpn": {
+      "value": "<security-analyst-upn>"
+    },
+    "sentinelAutomationPrincipalId": {
+      "value": "<tenant-object-id-for-microsoft-sentinel-service-principal>"
+    },
+    "analyticsRulesEnabled": {
+      "value": true
+    },
+    "createIngestionLandingZone": {
+      "value": true
+    },
+    "criblTableRetentionInDays": {
+      "value": 90
+    },
+    "criblPrincipalObjectId": {
+      "value": ""
+    },
+    "criblPublicNetworkAccess": {
+      "value": "Enabled"
+    },
+    "workflowState": {
+      "value": "Disabled"
+    },
+    "operationWorkflowState": {
+      "value": "Disabled"
+    },
+    "enableZiaMutatingOperations": {
+      "value": false
+    },
+    "automationRuleEnabled": {
+      "value": false
+    },
+    "zscalerCloudName": {
+      "value": ""
+    },
+    "zscalerBlockCategory": {
+      "value": "OTHER_MISCELLANEOUS"
+    }
+  }
+}

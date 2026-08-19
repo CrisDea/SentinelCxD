@@ -1,0 +1,15 @@
+vimZscalerCriblAuthentication(
+    starttime=starttime,
+    endtime=endtime,
+    targetusername_has_any=targetusername_has_any,
+    actorusername_has_any=actorusername_has_any,
+    srcipaddr_has_any_prefix=srcipaddr_has_any_prefix,
+    srchostname_has_any=srchostname_has_any,
+    targetipaddr_has_any_prefix=targetipaddr_has_any_prefix,
+    dvcipaddr_has_any_prefix=dvcipaddr_has_any_prefix,
+    dvchostname_has_any=dvchostname_has_any,
+    eventtype_in=eventtype_in,
+    eventresultdetails_in=eventresultdetails_in,
+    eventresult=eventresult,
+    disabled=disabled,
+    pack=pack)

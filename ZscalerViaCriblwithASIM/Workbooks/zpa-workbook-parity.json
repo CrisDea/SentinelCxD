@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "1.0.0",
+  "upstream": {
+    "repository": "Azure/Azure-Sentinel",
+    "commit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+    "path": "Solutions/Zscaler Private Access (ZPA)/Workbooks/ZscalerZPA.json",
+    "queryPanelCount": 9
+  },
+  "target": {
+    "path": "Workbooks/ZscalerZPAAccess.json",
+    "queryPanelCount": 9,
+    "parserDependencies": [
+      "_Im_NetworkSession"
+    ],
+    "derivedAlertDependencies": [
+      "SecurityAlert"
+    ],
+    "vendorPredicate": "EventVendor =~ 'Zscaler'",
+    "productPredicate": "EventProduct has 'Private Access'",
+    "additionalFields": [
+      "ConnectionCloseReason"
+    ]
+  },
+  "panelCountDefinition": "Items with type 3 (KqlItem), including KqlItems nested in upstream NotebookGroup items.",
+  "panels": [
+    {
+      "order": 1,
+      "upstreamTitle": "Top Countries",
+      "targetTitle": "Top Countries",
+      "visualization": "piechart",
+      "timeSemantics": "TimeRange parameter",
+      "mapping": "ZPAEvent open sessions grouped by SrcGeoCountry -> allowed _Im_NetworkSession rows grouped by SrcGeoCountry",
+      "fields": {
+        "DvcAction=open": "DvcAction=Allow",
+        "SrcGeoCountry": "SrcGeoCountry"
+      },
+      "parity": "equivalent"
+    },
+    {
+      "order": 2,
+      "upstreamTitle": "Connection status",
+      "targetTitle": "Connection status",
+      "visualization": "piechart",
+      "timeSemantics": "TimeRange parameter",
+      "mapping": "Raw DvcAction distribution -> normalized DvcAction distribution",
+      "fields": {
+        "DvcAction": "DvcAction"
+      },
+      "parity": "normalized-enumeration"
+    },
+    {
+      "order": 3,
+      "upstreamTitle": "Events over time",
+      "targetTitle": "Events over time",
+      "visualization": "timechart",
+      "timeSemantics": "TimeRange start/end/grain",
+      "mapping": "ZPA event count series -> ZPA-filtered Network Session count series",
+      "fields": {
+        "TimeGenerated": "TimeGenerated"
+      },
+      "parity": "equivalent"
+    },
+    {
+      "order": 4,
+      "upstreamTitle": "Top Source IP",
+      "targetTitle": "Top Source IP",
+      "visualization": "barchart",
+      "timeSemantics": "TimeRange parameter",
+      "ranking": "top 10 descending",
+      "mapping": "Open-session source IP counts -> allowed-session source IP counts",
+      "fields": {
+        "DvcAction=open": "DvcAction=Allow",
+        "SrcIpAddr": "SrcIpAddr"
+      },
+      "parity": "equivalent"
+    },
+    {
+      "order": 5,
+      "upstreamTitle": "Connection close reasons",
+      "targetTitle": "Connection close reasons",
+      "visualization": "piechart",
+      "timeSemantics": "fixed trailing 7 days",
+      "mapping": "Raw close rows grouped by raw EventResult -> End rows grouped by original result detail or vendor close-reason fallback",
+      "fields": {
+        "DvcAction=close": "EventSubType=End",
+        "EventResult": "EventOriginalResultDetails",
+        "fallback": "AdditionalFields.ConnectionCloseReason"
+      },
+      "parity": "conditional-on-pipeline-preservation"
+    },
+    {
+      "order": 6,
+      "upstreamTitle": "Top urlhostname requests",
+      "targetTitle": "Top urlhostname requests",
+      "visualization": "barchart",
+      "timeSemantics": "fixed trailing 7 days",
+      "mapping": "Raw UrlHostname counts -> normalized destination FQDN counts",
+      "fields": {
+        "UrlHostname": "DstFQDN"
+      },
+      "parity": "hostname-equivalent"
+    },
+    {
+      "order": 7,
+      "upstreamTitle": "Top VPN Traffic (per user)",
+      "targetTitle": "Top VPN Traffic (per user)",
+      "visualization": "tiles",
+      "timeSemantics": "TimeRange parameter; upstream default 30 days",
+      "ranking": "ascending Traffic(MB), take 8, preserved exactly",
+      "mapping": "Traffic and trend by raw DstUserName -> normalized SrcUsername; SrcBytes remains SrcBytes",
+      "fields": {
+        "DstUserName": "SrcUsername",
+        "SrcBytes": "SrcBytes",
+        "TimeGenerated": "TimeGenerated"
+      },
+      "parity": "equivalent"
+    },
+    {
+      "order": 8,
+      "upstreamTitle": "New VPN Users",
+      "targetTitle": "New VPN Users",
+      "visualization": "table",
+      "timeSemantics": "30-day lookback and 24-hour current window",
+      "mapping": "New source IP for a user; target uses a non-overlapping baseline and a leftanti join keyed by user and IP",
+      "fields": {
+        "DstUserName": "SrcUsername",
+        "SrcIpAddr": "SrcIpAddr",
+        "DvcAction=open": "DvcAction=Allow"
+      },
+      "parity": "intent-preserved-with-correctness-fix"
+    },
+    {
+      "order": 9,
+      "upstreamTitle": "Latest Alerts",
+      "targetTitle": "Latest Alerts",
+      "visualization": "table",
+      "timeSemantics": "TimeRange parameter; upstream default 30 days",
+      "mapping": "SecurityAlert VPN rows -> SecurityAlert rows precisely scoped to Zscaler and ZPA/VPN alert identity",
+      "fields": {
+        "AlertName": "RuleName",
+        "AlertSeverity": "Severity"
+      },
+      "parity": "equivalent-derived-alert"
+    }
+  ],
+  "limitations": [
+    "SecurityAlert is used only by Latest Alerts because that panel displays Sentinel-derived alerts rather than raw Zscaler telemetry. Its filter requires a Zscaler alert name plus a ZPA/VPN alert-name indicator or a Zscaler Private Access description.",
+    "Normalized DvcAction values are not raw ZPA open/close values: open maps to Allow and close maps to EventSubType End.",
+    "Connection-close reason parity depends on EventOriginalResultDetails or AdditionalFields.ConnectionCloseReason being populated by the ingestion pipeline.",
+    "DstFQDN preserves hostname semantics but not a URL scheme/path that might have existed in raw UrlHostname.",
+    "The New VPN Users upstream query mixes the current interval into its baseline and drops the user join key. The target corrects this so the panel can actually identify a source IP not seen for that same user in the preceding baseline.",
+    "The upstream Top VPN Traffic query orders Traffic(MB) ascending before take 8 despite its title. That behavior is preserved rather than silently changing the ranked population."
+  ]
+}

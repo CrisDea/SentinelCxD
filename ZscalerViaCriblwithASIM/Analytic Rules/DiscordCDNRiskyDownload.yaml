@@ -1,0 +1,74 @@
+id: d501c4dd-cc45-4a87-a0b6-e97329d381e7
+name: ASIM - Discord CDN Risky File Download (Zscaler ZIA)
+description: |
+  'Identifies callouts to Discord CDN addresses for risky file extensions. This detection triggers when a
+  callout for a risky file is made to a Discord server that has only been seen once in the environment.
+  Unique Discord servers are identified using the server ID embedded in the request URL (DiscordServerId in
+  the query). Discord CDN has been used in multiple campaigns to download additional payloads.
+  Adapted from the upstream Zscaler Internet Access rule "Discord CDN Risky File Download"
+  (original id 010bd98c-a6be-498c-bdcd-502308c0fdae) to use the ASIM Web Session normalized schema
+  (_Im_WebSession) instead of CommonSecurityLog, so it works with any source normalized to ASIM,
+  including a Cribl Stream pipeline that maps Zscaler ZIA logs to _Im_WebSession.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimWebSession
+    dataTypes:
+      - _Im_WebSession
+queryFrequency: 1d
+queryPeriod: 1d
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - CommandAndControl
+relevantTechniques:
+  - T1071
+tags:
+  - Discord
+  - Zscaler
+  - ASIM
+query: |
+  let connectionThreshold = 1;
+  let riskyExtensions = dynamic([".bin", ".exe", ".dll", ".msi"]);
+  _Im_WebSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "ZIA"
+  | where Url has_any ("media.discordapp.net", "cdn.discordapp.com")
+  | where Url has "attachments"
+  | where DvcAction != "Deny"
+  | extend DiscordServerId = extract(@"/attachments/([0-9]+)/", 1, Url)
+  | where isnotempty(DiscordServerId)
+  | summarize
+      dcount(Url),
+      make_set(SrcUsername),
+      make_set(SrcIpAddr),
+      make_set(Url),
+      min(TimeGenerated),
+      max(TimeGenerated),
+      make_set(DvcAction)
+      by DiscordServerId
+  | where dcount_Url <= connectionThreshold
+  | mv-expand set_SrcUsername to typeof(string), set_Url to typeof(string), set_DvcAction to typeof(string), set_SrcIpAddr to typeof(string)
+  | summarize by DiscordServerId, dcount_Url, set_SrcUsername, min_TimeGenerated, max_TimeGenerated, set_DvcAction, set_SrcIpAddr, set_Url
+  | project
+      StartTime = min_TimeGenerated,
+      EndTime = max_TimeGenerated,
+      DeviceActionTaken = set_DvcAction,
+      SourceUser = set_SrcUsername,
+      SourceIP = set_SrcIpAddr,
+      RequestUrl = set_Url
+  | where RequestUrl has_any (riskyExtensions)
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: SourceUser
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SourceIP
+  - entityType: URL
+    fieldMappings:
+      - identifier: Url
+        columnName: RequestUrl
+version: 1.0.0
+kind: Scheduled

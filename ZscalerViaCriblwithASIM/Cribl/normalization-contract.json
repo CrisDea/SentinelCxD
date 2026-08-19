@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "description": "Portable contract implemented by the Cribl pipeline before posting to the Logs Ingestion API.",
+  "input": {
+    "acceptedProducts": ["ZIA", "ZPA"],
+    "familyMapping": "family-mapping.json"
+  },
+  "output": {
+    "contentType": "application/json",
+    "body": "JSON array of canonical events",
+    "stream": "Custom-ZscalerCriblRaw",
+    "fixedValues": {"EventVendor": "Zscaler"},
+    "routing": {
+      "ZscalerFamily": "canonical family from family-mapping.json",
+      "ZscalerSubfamily": "ZPA subtype, otherwise empty string",
+      "AsimSchemas": "exact JSON array from family-mapping.json"
+    },
+    "typeCoercion": {
+      "datetime": ["TimeGenerated","EventStartTime","EventEndTime"],
+      "int": ["SrcPortNumber","DstPortNumber","HttpStatusCode"],
+      "long": ["EventCount","NetworkDuration","NetworkBytes","SrcBytes","DstBytes","TargetFileSize"],
+      "dynamic": ["AsimSchemas","DnsResponseName","AdditionalFields","RawEvent"]
+    },
+    "unknownFieldPolicy": "Move source fields without an ASIM semantic field into AdditionalFields; never discard them silently.",
+    "requiredAdditionalFieldsForContent": [
+      "Action",
+      "AppGroup",
+      "Application",
+      "AttachmentFileType",
+      "ConnectionCloseReason",
+      "Connector",
+      "DeviceModel",
+      "DlpDictionary",
+      "DlpRule",
+      "EventClassId",
+      "FileType",
+      "Identifier",
+      "Location",
+      "LogType",
+      "MalwareCategory",
+      "Owner",
+      "RiskScore",
+      "SandboxCategory",
+      "ThreatCategory",
+      "UrlClass"
+    ],
+    "valueNormalization": "value-normalization.json",
+    "fieldAliases": "field-aliases.json",
+    "failurePolicy": "Reject or route malformed/unmapped events to an explicitly monitored Cribl quarantine route; never send a partial canonical event."
+  }
+}

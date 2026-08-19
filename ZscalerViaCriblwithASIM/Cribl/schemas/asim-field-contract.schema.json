@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/zscaler-asim/asim-field-contract.schema.json",
+  "type": "object",
+  "required": ["version","vendor","physicalTable","streamName","commonRequired","schemas"],
+  "properties": {
+    "version": {"type":"string"},
+    "vendor": {"const":"Zscaler"},
+    "physicalTable": {"pattern":"_CL$"},
+    "streamName": {"pattern":"^Custom-"},
+    "routingFields": {"type":"object"},
+    "commonRequired": {"type":"array","items":{"type":"string"},"uniqueItems":true},
+    "schemas": {
+      "type":"array",
+      "minItems":6,
+      "maxItems":6,
+      "items":{
+        "type":"object",
+        "required":["name","builtInParser","sourceParser","customUnifyingParser","required"],
+        "properties":{
+          "name":{"enum":["AuditEvent","Authentication","Dns","FileEvent","NetworkSession","WebSession"]},
+          "builtInParser":{"type":"string"},
+          "sourceParser":{"type":"string"},
+          "customUnifyingParser":{"type":"string"},
+          "required":{"type":"array","items":{"type":"string"},"minItems":1},
+          "recommended":{"type":"array","items":{"type":"string"}}
+        },
+        "additionalProperties":false
+      }
+    }
+  },
+  "additionalProperties":false
+}

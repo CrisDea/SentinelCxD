@@ -1,0 +1,9 @@
+**/infra/main.parameters.json
+**/*.local.json
+**/*.secrets.json
+**/.env
+**/.env.*
+**/bin/
+**/obj/
+**/.DS_Store
+Thumbs.db

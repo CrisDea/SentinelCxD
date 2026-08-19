@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1.0.0",
+  "baseline": {
+    "repository": "https://github.com/Azure/Azure-Sentinel",
+    "commit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+    "solutions": {
+      "zia": {
+        "path": "Solutions/Zscaler Internet Access",
+        "version": "3.0.3"
+      },
+      "zpa": {
+        "path": "Solutions/Zscaler Private Access (ZPA)",
+        "version": "3.0.4"
+      }
+    }
+  },
+  "architecture": {
+    "ingestionOwner": "Cribl",
+    "queryContract": "Microsoft Sentinel ASIM built-in unifying parsers",
+    "directZscalerConnectorsIncluded": false,
+    "requiredParsers": [
+      "_Im_AuditEvent",
+      "_Im_Authentication",
+      "_Im_Dns",
+      "_Im_FileEvent",
+      "_Im_NetworkSession",
+      "_Im_WebSession"
+    ]
+  },
+  "coverage": [
+    {
+      "product": "ZIA",
+      "contentType": "Analytic rules",
+      "upstreamCount": 2,
+      "replacementManifest": "Analytic Rules/rules.json",
+      "replacementCount": 2,
+      "status": "complete"
+    },
+    {
+      "product": "ZIA",
+      "contentType": "Workbooks",
+      "upstreamCount": 17,
+      "replacementManifest": "Workbooks/zia-workbook-parity.json",
+      "replacementCount": 17,
+      "status": "complete"
+    },
+    {
+      "product": "ZIA",
+      "contentType": "Cloud NSS connector families",
+      "upstreamCount": 15,
+      "replacementManifest": "Cribl/family-mapping.json",
+      "replacementCount": 15,
+      "status": "complete"
+    },
+    {
+      "product": "ZIA",
+      "contentType": "OAuth response operations",
+      "upstreamCount": 10,
+      "replacementManifest": "Playbooks/playbook-parity.json",
+      "replacementCount": 10,
+      "status": "complete"
+    },
+    {
+      "product": "ZPA",
+      "contentType": "Analytic rules",
+      "upstreamCount": 10,
+      "replacementManifest": "Analytic Rules/rules.json",
+      "replacementCount": 10,
+      "status": "complete"
+    },
+    {
+      "product": "ZPA",
+      "contentType": "Hunting queries",
+      "upstreamCount": 10,
+      "replacementManifest": "Hunting Queries/hunting-queries.json",
+      "replacementCount": 10,
+      "status": "complete"
+    },
+    {
+      "product": "ZPA",
+      "contentType": "Workbooks",
+      "upstreamCount": 1,
+      "replacementManifest": "Workbooks/zpa-workbook-parity.json",
+      "replacementCount": 1,
+      "status": "complete"
+    },
+    {
+      "product": "ZPA",
+      "contentType": "Connector and parser family",
+      "upstreamCount": 1,
+      "replacementManifest": "Cribl/family-mapping.json",
+      "replacementCount": 1,
+      "status": "complete"
+    }
+  ]
+}

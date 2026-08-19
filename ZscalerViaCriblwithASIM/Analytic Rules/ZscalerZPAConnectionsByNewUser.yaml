@@ -1,0 +1,81 @@
+id: 37d89779-cad6-42b3-97e0-68321a7aefdc
+name: ASIM - Zscaler ZPA Connections by New User (Zscaler ZPA)
+description: |
+  'Detects Zscaler Private Access (ZPA) sign-ins by a user who signs in during the current evaluation
+  window but was not observed signing in during the preceding ~14-day baseline window. A first-seen user
+  sign-in can indicate onboarding of a new account, but can also indicate use of a newly created or
+  compromised identity.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - ZPA connections by new user"
+  (original id 236a7ec1-0120-40f2-a157-c1a72dde8bcb, ZPAEvent table) to use the ASIM Authentication
+  normalized schema (_Im_Authentication) instead of the raw ZPAEvent table. DvcAction == "open" is mapped to
+  EventType == "Logon" and EventResult == "Success", and DstUserName in the raw ZPAEvent table is mapped to
+  TargetUsername, since it identifies the signed-in user.
+  Optimized to invoke the _Im_Authentication unifying parser exactly once per execution: it is materialized
+  into a single bounded result set (materialize(), filtered to the 14-day lookback and the Zscaler ZPA
+  logon/success predicate), and the baseline and current branches are both derived from that materialized
+  set, rather than each referencing _Im_Authentication directly. Referencing a unifying ASIM parser more
+  than once in the same query causes the engine to re-expand the underlying union of source-specific
+  parsers for every reference, which can exceed the Log Analytics relational operator tree complexity limit
+  (CRT0015).
+  Correctness fix (security review): the query previously derived listUsers from the same full materialized
+  dataset that the detection branch also scanned, so any user present in the current window was, by
+  construction, already a member of listUsers (make_set(TargetUsername) over the identical rows), and the
+  "!in (listUsers)" filter could never match - the rule was effectively a silent no-op. The query now splits
+  the single materialized result set into two non-overlapping time slices: baseline = TimeGenerated between
+  (ago(14d) .. ago(1h)) (approximately the preceding 14 days, ending where the current slice begins) and
+  current = TimeGenerated > ago(1h) (the most recent hour, matching queryFrequency). Both windows fit inside
+  the existing 14-day queryPeriod, so no schedule change was required. A leftanti join keyed on
+  TargetUsername returns only users present in the current slice with no matching TargetUsername in the
+  baseline slice, replacing the prior global make_set()/"!in" comparison with a genuine per-user,
+  non-overlapping-window comparison. Detection intent, severity, thresholds, and entity mappings are
+  unchanged; the baseline window is now bounded to (ago(14d) .. ago(1h)) instead of a full 14 days, a
+  difference of one hour that is immaterial to the "not seen in the last 14 days" detection intent.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimAuthentication
+    dataTypes:
+      - _Im_Authentication
+queryFrequency: 1h
+queryPeriod: 14d
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Persistence
+relevantTechniques:
+  - T1078
+query: |
+  let dt_lookback = 14d;
+  let dt_current = 1h;
+  // Materialize the ASIM Authentication parser once, bounded to the lookback window and the Zscaler ZPA
+  // logon/success predicate, so the baseline and current branches below reuse the same result set instead
+  // of each triggering a separate expansion of the underlying unifying parser.
+  let AuthEvents = materialize(
+      _Im_Authentication
+      | where TimeGenerated > ago(dt_lookback)
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+      | where EventType == "Logon" and EventResult == "Success"
+  );
+  // Baseline: distinct users who signed in during the ~14-day window preceding the current slice.
+  let baseline =
+  AuthEvents
+  | where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))
+  | summarize by TargetUsername;
+  // Current: distinct users who signed in during the most recent hour (matches queryFrequency), so
+  // baseline and current never overlap.
+  let current =
+  AuthEvents
+  | where TimeGenerated > ago(dt_current)
+  | summarize by TargetUsername;
+  // A user in the current slice with no matching TargetUsername in the baseline slice is new: they had no
+  // sign-in during the preceding ~14 days.
+  current
+  | join kind=leftanti (baseline) on TargetUsername
+  | extend AccountCustomEntity = TargetUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+kind: Scheduled

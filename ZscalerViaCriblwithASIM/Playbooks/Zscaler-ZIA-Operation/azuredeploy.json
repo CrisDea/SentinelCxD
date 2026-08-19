@@ -1,0 +1,2277 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "title": "Zscaler ZIA secure operation child workflow",
+    "description": "Reusable one-entity ZIA OAuth2 operation workflow. Credentials remain in Key Vault, OAuth responses are secured, mutation is disabled by default, and each mutation requires its own Teams approval.",
+    "sourceCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1"
+  },
+  "parameters": {
+    "PlaybookName": {
+      "type": "string",
+      "defaultValue": "Zscaler-ZIA-Operation"
+    },
+    "TeamsConnectionName": {
+      "type": "string",
+      "defaultValue": "teams-zscaler-zia-operation"
+    },
+    "WorkflowState": {
+      "type": "string",
+      "defaultValue": "Disabled",
+      "allowedValues": [
+        "Disabled",
+        "Enabled"
+      ]
+    },
+    "EnableMutatingOperations": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Explicit mutation kill switch. Leave false for authentication and lookup-only use."
+      }
+    },
+    "AuthorizedCallerObjectId": {
+      "type": "string",
+      "defaultValue": "00000000-0000-0000-0000-000000000000",
+      "metadata": {
+        "description": "Microsoft Entra object ID (oid claim) of the one managed identity authorized to invoke the Request trigger. The all-zero default intentionally authorizes no real caller."
+      }
+    },
+    "TriggerAudience": {
+      "type": "string",
+      "defaultValue": "https://management.azure.com/",
+      "metadata": {
+        "description": "Exact aud claim required on the caller's Microsoft Entra access token. The caller must request a managed-identity token for this same audience."
+      }
+    },
+    "ApproverUpn": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "ApprovalTimeout": {
+      "type": "string",
+      "defaultValue": "PT8H"
+    },
+    "KeyVaultUri": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "ZscalerClientIdSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-client-id"
+    },
+    "ZscalerClientSecretSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-client-secret"
+    },
+    "ZscalerTokenUrlSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-token-url"
+    },
+    "ZscalerApiBaseUri": {
+      "type": "string",
+      "defaultValue": "https://api.zsapi.net"
+    },
+    "ZscalerCloudName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Deployment-specific ZIA cloud name retained in approval and audit responses; no tenant value is embedded in the template."
+      }
+    },
+    "IpBlockCategoryId": {
+      "type": "string",
+      "defaultValue": "OTHER_MISCELLANEOUS"
+    },
+    "UrlBlockCategoryId": {
+      "type": "string",
+      "defaultValue": "OTHER_MISCELLANEOUS"
+    },
+    "UrlCategoryEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/urlCategories"
+    },
+    "ActivationEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/status/activate"
+    },
+    "LookupEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/urlLookup"
+    },
+    "SecurityEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/security"
+    },
+    "AdvancedSecurityEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/security/advanced"
+    },
+    "BlacklistRemoveEndpointPath": {
+      "type": "string",
+      "defaultValue": "/zia/api/v1/security/advanced/blacklistUrls?action=REMOVE_FROM_LIST"
+    },
+    "LookupTimeout": {
+      "type": "string",
+      "defaultValue": "PT1M"
+    }
+  },
+  "variables": {
+    "TeamsConnectionId": "[resourceId('Microsoft.Web/connections', parameters('TeamsConnectionName'))]",
+    "TeamsManagedApiId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/teams')]",
+    "TenantIssuer": "[concat('https://sts.windows.net/', subscription().tenantId, '/')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('TeamsConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "[parameters('TeamsConnectionName')]",
+        "customParameterValues": {},
+        "api": {
+          "id": "[variables('TeamsManagedApiId')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('PlaybookName')]",
+      "location": "[resourceGroup().location]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('TeamsConnectionName'))]"
+      ],
+      "properties": {
+        "state": "[parameters('WorkflowState')]",
+        "accessControl": {
+          "triggers": {
+            "sasAuthenticationPolicy": {
+              "state": "Disabled"
+            },
+            "openAuthenticationPolicies": {
+              "policies": {
+                "ApprovedManagedIdentityOnly": {
+                  "type": "AAD",
+                  "claims": [
+                    {
+                      "name": "iss",
+                      "value": "[variables('TenantIssuer')]"
+                    },
+                    {
+                      "name": "aud",
+                      "value": "[parameters('TriggerAudience')]"
+                    },
+                    {
+                      "name": "oid",
+                      "value": "[parameters('AuthorizedCallerObjectId')]"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "type": "Object",
+              "defaultValue": {}
+            },
+            "EnableMutatingOperations": {
+              "type": "Bool",
+              "defaultValue": false
+            },
+            "ApproverUpn": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ApprovalTimeout": {
+              "type": "String",
+              "defaultValue": "PT8H"
+            },
+            "KeyVaultUri": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerClientIdSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerClientSecretSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerTokenUrlSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerApiBaseUri": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerCloudName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "IpBlockCategoryId": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "UrlBlockCategoryId": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "UrlCategoryEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ActivationEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "LookupEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "SecurityEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "AdvancedSecurityEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "BlacklistRemoveEndpointPath": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "LookupTimeout": {
+              "type": "String",
+              "defaultValue": "PT1M"
+            }
+          },
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": {
+                "method": "POST",
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "operation"
+                  ],
+                  "properties": {
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "authentication",
+                        "block-ip",
+                        "block-url",
+                        "unblock-ip",
+                        "unblock-url",
+                        "lookup-ip",
+                        "lookup-url",
+                        "blacklist-url",
+                        "unblacklist-url",
+                        "whitelist-url"
+                      ]
+                    },
+                    "entity": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "incidentId": {
+                      "type": "string",
+                      "maxLength": 1024
+                    },
+                    "requestedBy": {
+                      "type": "string",
+                      "maxLength": 320
+                    },
+                    "context": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "actions": {
+            "Initialize_Request_State": {
+              "type": "InitializeVariable",
+              "runAfter": {},
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "ApprovalGranted",
+                    "type": "boolean",
+                    "value": false
+                  },
+                  {
+                    "name": "OperationSucceeded",
+                    "type": "boolean",
+                    "value": false
+                  },
+                  {
+                    "name": "OperationResult",
+                    "type": "object",
+                    "value": {}
+                  }
+                ]
+              }
+            },
+            "Guard_Validate_Request": {
+              "type": "If",
+              "runAfter": {
+                "Initialize_Request_State": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "contains": [
+                        "@createArray('authentication','block-ip','block-url','unblock-ip','unblock-url','lookup-ip','lookup-url','blacklist-url','unblacklist-url','whitelist-url')",
+                        "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                      ]
+                    },
+                    {
+                      "or": [
+                        {
+                          "equals": [
+                            "@toLower(trim(coalesce(triggerBody()?['operation'], '')))",
+                            "authentication"
+                          ]
+                        },
+                        {
+                          "and": [
+                            {
+                              "greater": [
+                                "@length(trim(coalesce(triggerBody()?['entity'], '')))",
+                                0
+                              ]
+                            },
+                            {
+                              "lessOrEquals": [
+                                "@length(trim(coalesce(triggerBody()?['entity'], '')))",
+                                2048
+                              ]
+                            },
+                            {
+                              "not": {
+                                "contains": [
+                                  "@coalesce(triggerBody()?['entity'], '')",
+                                  " "
+                                ]
+                              }
+                            },
+                            {
+                              "not": {
+                                "contains": [
+                                  "@coalesce(triggerBody()?['entity'], '')",
+                                  "\n"
+                                ]
+                              }
+                            },
+                            {
+                              "not": {
+                                "contains": [
+                                  "@coalesce(triggerBody()?['entity'], '')",
+                                  "\r"
+                                ]
+                              }
+                            },
+                            {
+                              "or": [
+                                {
+                                  "and": [
+                                    {
+                                      "contains": [
+                                        "@createArray('block-ip','unblock-ip','lookup-ip')",
+                                        "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                                      ]
+                                    },
+                                    {
+                                      "or": [
+                                        {
+                                          "contains": [
+                                            "@coalesce(triggerBody()?['entity'], '')",
+                                            "."
+                                          ]
+                                        },
+                                        {
+                                          "contains": [
+                                            "@coalesce(triggerBody()?['entity'], '')",
+                                            ":"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "and": [
+                                    {
+                                      "contains": [
+                                        "@createArray('block-url','unblock-url','lookup-url','blacklist-url','unblacklist-url','whitelist-url')",
+                                        "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                                      ]
+                                    },
+                                    {
+                                      "or": [
+                                        {
+                                          "contains": [
+                                            "@coalesce(triggerBody()?['entity'], '')",
+                                            "."
+                                          ]
+                                        },
+                                        {
+                                          "startsWith": [
+                                            "@toLower(coalesce(triggerBody()?['entity'], ''))",
+                                            "http://"
+                                          ]
+                                        },
+                                        {
+                                          "startsWith": [
+                                            "@toLower(coalesce(triggerBody()?['entity'], ''))",
+                                            "https://"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_Invalid_Request": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 400,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Failed",
+                      "code": "InvalidRequest",
+                      "message": "Use one exact allowlisted operation and one non-empty entity without spaces or control characters. The entity is omitted only for authentication."
+                    }
+                  }
+                },
+                "Terminate_Invalid_Request": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Invalid_Request": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "InvalidRequest",
+                      "message": "Request validation failed."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Guard_Mutation_Disabled": {
+              "type": "If",
+              "runAfter": {
+                "Guard_Validate_Request": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "contains": [
+                      "@createArray('block-ip','block-url','unblock-ip','unblock-url','blacklist-url','unblacklist-url','whitelist-url')",
+                      "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                    ]
+                  },
+                  {
+                    "equals": [
+                      "@parameters('EnableMutatingOperations')",
+                      false
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Response_Mutation_Disabled": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 403,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Rejected",
+                      "code": "MutationDisabled",
+                      "message": "Mutating ZIA operations are disabled by deployment policy."
+                    }
+                  }
+                },
+                "Terminate_Mutation_Disabled": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Mutation_Disabled": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "MutationDisabled",
+                      "message": "Mutating operations disabled."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Check_Approval_Required": {
+              "type": "If",
+              "runAfter": {
+                "Guard_Mutation_Disabled": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "contains": [
+                      "@createArray('block-ip','block-url','unblock-ip','unblock-url','blacklist-url','unblacklist-url','whitelist-url')",
+                      "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Compose_Entity_Approval_Card": {
+                  "type": "Compose",
+                  "runAfter": {},
+                  "inputs": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.2",
+                    "body": [
+                      {
+                        "type": "TextBlock",
+                        "size": "Large",
+                        "weight": "Bolder",
+                        "wrap": true,
+                        "text": "Zscaler ZIA mutation approval"
+                      },
+                      {
+                        "type": "FactSet",
+                        "facts": [
+                          {
+                            "title": "Operation:",
+                            "value": "@{toLower(trim(coalesce(triggerBody()?['operation'], '')))}"
+                          },
+                          {
+                            "title": "Entity:",
+                            "value": "@{trim(coalesce(triggerBody()?['entity'], ''))}"
+                          },
+                          {
+                            "title": "Incident:",
+                            "value": "@{coalesce(triggerBody()?['incidentId'], 'not supplied')}"
+                          },
+                          {
+                            "title": "Requested by:",
+                            "value": "@{coalesce(triggerBody()?['requestedBy'], 'not supplied')}"
+                          },
+                          {
+                            "title": "ZIA cloud:",
+                            "value": "@{coalesce(parameters('ZscalerCloudName'), 'not supplied')}"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "TextBlock",
+                        "wrap": true,
+                        "weight": "Bolder",
+                        "color": "Attention",
+                        "text": "Approve this exact operation for this one entity only? Rejection or timeout makes no Zscaler call."
+                      }
+                    ],
+                    "actions": [
+                      {
+                        "type": "Action.Submit",
+                        "title": "Approve",
+                        "data": {
+                          "decision": "Approve"
+                        }
+                      },
+                      {
+                        "type": "Action.Submit",
+                        "title": "Reject",
+                        "data": {
+                          "decision": "Reject"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "Post_Entity_Approval_And_Wait": {
+                  "type": "ApiConnectionWebhook",
+                  "runAfter": {
+                    "Compose_Entity_Approval_Card": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['teams']['connectionId']"
+                      }
+                    },
+                    "path": "/flowbot/actions/flowcontinuation/recipienttypes/user/$subscriptions",
+                    "body": {
+                      "body": {
+                        "messageBody": "@{string(outputs('Compose_Entity_Approval_Card'))}",
+                        "recipient": {
+                          "to": "@{parameters('ApproverUpn')}"
+                        },
+                        "shouldUpdateCard": true
+                      },
+                      "notificationUrl": "@{listCallbackUrl()}"
+                    }
+                  },
+                  "limit": {
+                    "timeout": "@parameters('ApprovalTimeout')"
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": [
+                        "inputs",
+                        "outputs"
+                      ]
+                    }
+                  }
+                },
+                "Record_Approval_Decision": {
+                  "type": "If",
+                  "runAfter": {
+                    "Post_Entity_Approval_And_Wait": [
+                      "Succeeded",
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "expression": {
+                    "and": [
+                      {
+                        "equals": [
+                          "@coalesce(body('Post_Entity_Approval_And_Wait')?['data']?['decision'], coalesce(body('Post_Entity_Approval_And_Wait')?['submitActionId'], ''))",
+                          "Approve"
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Set_Approval_Granted": {
+                      "type": "SetVariable",
+                      "runAfter": {},
+                      "inputs": {
+                        "name": "ApprovalGranted",
+                        "value": true
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Set_Approval_Not_Required": {
+                    "type": "SetVariable",
+                    "runAfter": {},
+                    "inputs": {
+                      "name": "ApprovalGranted",
+                      "value": true
+                    }
+                  }
+                }
+              }
+            },
+            "Guard_Approval_Result": {
+              "type": "If",
+              "runAfter": {
+                "Check_Approval_Required": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@variables('ApprovalGranted')",
+                        true
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_Approval_Rejected": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 403,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Rejected",
+                      "code": "ApprovalRejectedOrTimedOut",
+                      "mutated": false,
+                      "safeToWriteIdempotencyMarker": false
+                    }
+                  }
+                },
+                "Terminate_Approval_Rejected": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Approval_Rejected": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "ApprovalRejected",
+                      "message": "Approval rejected or timed out."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Compose_KeyVault_Base_Uri": {
+              "type": "Compose",
+              "runAfter": {
+                "Guard_Approval_Result": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": "@{if(endsWith(parameters('KeyVaultUri'), '/'), substring(parameters('KeyVaultUri'), 0, sub(length(parameters('KeyVaultUri')), 1)), parameters('KeyVaultUri'))}"
+            },
+            "Get_Zscaler_ClientId_Secret": {
+              "type": "Http",
+              "runAfter": {
+                "Compose_KeyVault_Base_Uri": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "method": "GET",
+                "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerClientIdSecretName'), '?api-version=7.4')}",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://vault.azure.net"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT7S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT1H"
+                }
+              },
+              "limit": {
+                "timeout": "PT30S"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Get_Zscaler_ClientSecret_Secret": {
+              "type": "Http",
+              "runAfter": {
+                "Compose_KeyVault_Base_Uri": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "method": "GET",
+                "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerClientSecretSecretName'), '?api-version=7.4')}",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://vault.azure.net"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT7S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT1H"
+                }
+              },
+              "limit": {
+                "timeout": "PT30S"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Get_Zscaler_TokenUrl_Secret": {
+              "type": "Http",
+              "runAfter": {
+                "Compose_KeyVault_Base_Uri": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "method": "GET",
+                "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerTokenUrlSecretName'), '?api-version=7.4')}",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://vault.azure.net"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT7S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT1H"
+                }
+              },
+              "limit": {
+                "timeout": "PT30S"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Guard_KeyVault_Reads": {
+              "type": "If",
+              "runAfter": {
+                "Get_Zscaler_ClientId_Secret": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ],
+                "Get_Zscaler_ClientSecret_Secret": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ],
+                "Get_Zscaler_TokenUrl_Secret": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@coalesce(outputs('Get_Zscaler_ClientId_Secret')?['statusCode'], 0)",
+                        200
+                      ]
+                    },
+                    {
+                      "equals": [
+                        "@coalesce(outputs('Get_Zscaler_ClientSecret_Secret')?['statusCode'], 0)",
+                        200
+                      ]
+                    },
+                    {
+                      "equals": [
+                        "@coalesce(outputs('Get_Zscaler_TokenUrl_Secret')?['statusCode'], 0)",
+                        200
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_KeyVault_Failed": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 502,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Failed",
+                      "code": "KeyVaultSecretReadFailed",
+                      "safeToWriteIdempotencyMarker": false
+                    }
+                  }
+                },
+                "Terminate_KeyVault_Failed": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_KeyVault_Failed": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "KeyVaultFailed",
+                      "message": "Key Vault secret read failed."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Request_Zscaler_OAuth_Token": {
+              "type": "Http",
+              "runAfter": {
+                "Guard_KeyVault_Reads": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{body('Get_Zscaler_TokenUrl_Secret')?['value']}",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "@{concat('grant_type=client_credentials&client_id=', encodeUriComponent(coalesce(body('Get_Zscaler_ClientId_Secret')?['value'], '')), '&client_secret=', encodeUriComponent(coalesce(body('Get_Zscaler_ClientSecret_Secret')?['value'], '')), '&audience=', encodeUriComponent(parameters('ZscalerApiBaseUri')))}",
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT7S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT1H"
+                }
+              },
+              "limit": {
+                "timeout": "PT30S"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Guard_OAuth_Result": {
+              "type": "If",
+              "runAfter": {
+                "Request_Zscaler_OAuth_Token": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@coalesce(outputs('Request_Zscaler_OAuth_Token')?['statusCode'], 0)",
+                        200
+                      ]
+                    },
+                    {
+                      "greater": [
+                        "@length(coalesce(body('Request_Zscaler_OAuth_Token')?['access_token'], ''))",
+                        0
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_OAuth_Failed": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 502,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Failed",
+                      "code": "OAuthAuthenticationFailed",
+                      "safeToWriteIdempotencyMarker": false
+                    }
+                  }
+                },
+                "Terminate_OAuth_Failed": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_OAuth_Failed": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "OAuthFailed",
+                      "message": "OAuth authentication failed."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Guard_Authentication_Only": {
+              "type": "If",
+              "runAfter": {
+                "Guard_OAuth_Result": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@toLower(trim(coalesce(triggerBody()?['operation'], '')))",
+                      "authentication"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Response_Authentication_Success": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 200,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Succeeded",
+                      "operation": "authentication",
+                      "authenticated": true,
+                      "tokenExposed": false,
+                      "cloud": "@{parameters('ZscalerCloudName')}"
+                    }
+                  }
+                },
+                "Terminate_Authentication_Only": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Authentication_Success": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Succeeded"
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Dispatch_Allowlisted_Operation": {
+              "type": "Switch",
+              "runAfter": {
+                "Guard_Authentication_Only": [
+                  "Succeeded"
+                ]
+              },
+              "expression": "@toLower(trim(coalesce(triggerBody()?['operation'], '')))",
+              "cases": {
+                "Block_IP": {
+                  "case": "block-ip",
+                  "actions": {
+                    "ZIA_Block_IP": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "PUT",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('UrlCategoryEndpointPath'), '/', parameters('IpBlockCategoryId'), '?action=ADD_TO_LIST')}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "dbCategorizedUrls": [
+                            "@{trim(triggerBody()?['entity'])}"
+                          ]
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Block_IP": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Block_IP": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Block_IP')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Block_IP')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Block_IP_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Block_URL": {
+                  "case": "block-url",
+                  "actions": {
+                    "ZIA_Block_URL": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "PUT",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('UrlCategoryEndpointPath'), '/', parameters('UrlBlockCategoryId'), '?action=ADD_TO_LIST')}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "configuredName": "@{parameters('UrlBlockCategoryId')}",
+                          "urls": [
+                            "@{trim(triggerBody()?['entity'])}"
+                          ]
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Block_URL": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Block_URL": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Block_URL')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Block_URL')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Block_URL_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Unblock_IP": {
+                  "case": "unblock-ip",
+                  "actions": {
+                    "ZIA_Unblock_IP": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "PUT",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('UrlCategoryEndpointPath'), '/', parameters('IpBlockCategoryId'), '?action=REMOVE_FROM_LIST')}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "dbCategorizedUrls": [
+                            "@{trim(triggerBody()?['entity'])}"
+                          ]
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Unblock_IP": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Unblock_IP": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Unblock_IP')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Unblock_IP')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Unblock_IP_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Unblock_URL": {
+                  "case": "unblock-url",
+                  "actions": {
+                    "ZIA_Unblock_URL": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "PUT",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('UrlCategoryEndpointPath'), '/', parameters('UrlBlockCategoryId'), '?action=REMOVE_FROM_LIST')}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "urls": [
+                            "@{trim(triggerBody()?['entity'])}"
+                          ]
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Unblock_URL": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Unblock_URL": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Unblock_URL')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Unblock_URL')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Unblock_URL_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Lookup_IP": {
+                  "case": "lookup-ip",
+                  "actions": {
+                    "ZIA_Lookup_IP": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('LookupEndpointPath'))}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": [
+                          "@{trim(triggerBody()?['entity'])}"
+                        ],
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "@parameters('LookupTimeout')"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Lookup_IP": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Lookup_IP": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Lookup_IP')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Lookup_IP')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Lookup_IP_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        },
+                        "Set_Lookup_IP_Result": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationResult",
+                            "value": {
+                              "lookup": "@body('ZIA_Lookup_IP')"
+                            }
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Lookup_URL": {
+                  "case": "lookup-url",
+                  "actions": {
+                    "ZIA_Lookup_URL": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('LookupEndpointPath'))}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": [
+                          "@{trim(triggerBody()?['entity'])}"
+                        ],
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "@parameters('LookupTimeout')"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Lookup_URL": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Lookup_URL": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Lookup_URL')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Lookup_URL')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Lookup_URL_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        },
+                        "Set_Lookup_URL_Result": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationResult",
+                            "value": {
+                              "lookup": "@body('ZIA_Lookup_URL')"
+                            }
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Blacklist_URL": {
+                  "case": "blacklist-url",
+                  "actions": {
+                    "ZIA_Get_Advanced_Security": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "GET",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('AdvancedSecurityEndpointPath'))}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Accept": "application/json"
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Advanced_Security_Read": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Get_Advanced_Security": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Get_Advanced_Security')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Get_Advanced_Security')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "ZIA_Blacklist_URL": {
+                          "type": "Http",
+                          "runAfter": {},
+                          "inputs": {
+                            "method": "PUT",
+                            "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('AdvancedSecurityEndpointPath'))}",
+                            "headers": {
+                              "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                              "Content-Type": "application/json"
+                            },
+                            "body": "@setProperty(body('ZIA_Get_Advanced_Security'), 'blacklistUrls', union(coalesce(body('ZIA_Get_Advanced_Security')?['blacklistUrls'], createArray()), createArray(trim(triggerBody()?['entity']))))",
+                            "retryPolicy": {
+                              "type": "exponential",
+                              "count": 4,
+                              "interval": "PT7S",
+                              "minimumInterval": "PT5S",
+                              "maximumInterval": "PT1H"
+                            }
+                          },
+                          "limit": {
+                            "timeout": "PT1M"
+                          },
+                          "runtimeConfiguration": {
+                            "secureData": {
+                              "properties": [
+                                "inputs",
+                                "outputs"
+                              ]
+                            }
+                          }
+                        },
+                        "Check_Blacklist_URL": {
+                          "type": "If",
+                          "runAfter": {
+                            "ZIA_Blacklist_URL": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          },
+                          "expression": {
+                            "and": [
+                              {
+                                "greaterOrEquals": [
+                                  "@coalesce(outputs('ZIA_Blacklist_URL')?['statusCode'], 0)",
+                                  200
+                                ]
+                              },
+                              {
+                                "less": [
+                                  "@coalesce(outputs('ZIA_Blacklist_URL')?['statusCode'], 0)",
+                                  300
+                                ]
+                              }
+                            ]
+                          },
+                          "actions": {
+                            "Set_Blacklist_URL_Success": {
+                              "type": "SetVariable",
+                              "runAfter": {},
+                              "inputs": {
+                                "name": "OperationSucceeded",
+                                "value": true
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Unblacklist_URL": {
+                  "case": "unblacklist-url",
+                  "actions": {
+                    "ZIA_Unblacklist_URL": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('BlacklistRemoveEndpointPath'))}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "blacklistUrls": [
+                            "@{trim(triggerBody()?['entity'])}"
+                          ]
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Unblacklist_URL": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Unblacklist_URL": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Unblacklist_URL')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Unblacklist_URL')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Set_Unblacklist_URL_Success": {
+                          "type": "SetVariable",
+                          "runAfter": {},
+                          "inputs": {
+                            "name": "OperationSucceeded",
+                            "value": true
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                },
+                "Whitelist_URL": {
+                  "case": "whitelist-url",
+                  "actions": {
+                    "ZIA_Get_Security": {
+                      "type": "Http",
+                      "runAfter": {},
+                      "inputs": {
+                        "method": "GET",
+                        "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('SecurityEndpointPath'))}",
+                        "headers": {
+                          "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                          "Accept": "application/json"
+                        },
+                        "retryPolicy": {
+                          "type": "exponential",
+                          "count": 4,
+                          "interval": "PT7S",
+                          "minimumInterval": "PT5S",
+                          "maximumInterval": "PT1H"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT1M"
+                      },
+                      "runtimeConfiguration": {
+                        "secureData": {
+                          "properties": [
+                            "inputs",
+                            "outputs"
+                          ]
+                        }
+                      }
+                    },
+                    "Check_Security_Read": {
+                      "type": "If",
+                      "runAfter": {
+                        "ZIA_Get_Security": [
+                          "Succeeded",
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "expression": {
+                        "and": [
+                          {
+                            "greaterOrEquals": [
+                              "@coalesce(outputs('ZIA_Get_Security')?['statusCode'], 0)",
+                              200
+                            ]
+                          },
+                          {
+                            "less": [
+                              "@coalesce(outputs('ZIA_Get_Security')?['statusCode'], 0)",
+                              300
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "ZIA_Whitelist_URL": {
+                          "type": "Http",
+                          "runAfter": {},
+                          "inputs": {
+                            "method": "PUT",
+                            "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('SecurityEndpointPath'))}",
+                            "headers": {
+                              "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                              "Content-Type": "application/json"
+                            },
+                            "body": "@setProperty(body('ZIA_Get_Security'), 'whitelistUrls', union(coalesce(body('ZIA_Get_Security')?['whitelistUrls'], createArray()), createArray(trim(triggerBody()?['entity']))))",
+                            "retryPolicy": {
+                              "type": "exponential",
+                              "count": 4,
+                              "interval": "PT7S",
+                              "minimumInterval": "PT5S",
+                              "maximumInterval": "PT1H"
+                            }
+                          },
+                          "limit": {
+                            "timeout": "PT1M"
+                          },
+                          "runtimeConfiguration": {
+                            "secureData": {
+                              "properties": [
+                                "inputs",
+                                "outputs"
+                              ]
+                            }
+                          }
+                        },
+                        "Check_Whitelist_URL": {
+                          "type": "If",
+                          "runAfter": {
+                            "ZIA_Whitelist_URL": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          },
+                          "expression": {
+                            "and": [
+                              {
+                                "greaterOrEquals": [
+                                  "@coalesce(outputs('ZIA_Whitelist_URL')?['statusCode'], 0)",
+                                  200
+                                ]
+                              },
+                              {
+                                "less": [
+                                  "@coalesce(outputs('ZIA_Whitelist_URL')?['statusCode'], 0)",
+                                  300
+                                ]
+                              }
+                            ]
+                          },
+                          "actions": {
+                            "Set_Whitelist_URL_Success": {
+                              "type": "SetVariable",
+                              "runAfter": {},
+                              "inputs": {
+                                "name": "OperationSucceeded",
+                                "value": true
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                }
+              },
+              "default": {
+                "actions": {}
+              }
+            },
+            "Guard_Operation_Succeeded": {
+              "type": "If",
+              "runAfter": {
+                "Dispatch_Allowlisted_Operation": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "equals": [
+                        "@variables('OperationSucceeded')",
+                        true
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_Operation_Failed": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 502,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Failed",
+                      "code": "ZscalerOperationFailed",
+                      "safeToWriteIdempotencyMarker": false
+                    }
+                  }
+                },
+                "Terminate_Operation_Failed": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Operation_Failed": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Failed",
+                    "runError": {
+                      "code": "OperationFailed",
+                      "message": "Zscaler API operation failed."
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "Guard_Activation_Required": {
+              "type": "If",
+              "runAfter": {
+                "Guard_Operation_Succeeded": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "not": {
+                  "and": [
+                    {
+                      "contains": [
+                        "@createArray('block-ip','block-url','unblock-ip','unblock-url','blacklist-url','unblacklist-url','whitelist-url')",
+                        "@toLower(trim(coalesce(triggerBody()?['operation'], '')))"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "actions": {
+                "Response_Lookup_Success": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 200,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Succeeded",
+                      "operation": "@{toLower(trim(triggerBody()?['operation']))}",
+                      "entity": "@{trim(triggerBody()?['entity'])}",
+                      "result": "@variables('OperationResult')",
+                      "tokenExposed": false,
+                      "cloud": "@{parameters('ZscalerCloudName')}"
+                    }
+                  }
+                },
+                "Terminate_Lookup_Success": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Response_Lookup_Success": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "runStatus": "Succeeded"
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            },
+            "ZIA_Activate_Changes": {
+              "type": "Http",
+              "runAfter": {
+                "Guard_Activation_Required": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "method": "POST",
+                "uri": "@{concat(parameters('ZscalerApiBaseUri'), parameters('ActivationEndpointPath'))}",
+                "headers": {
+                  "Authorization": "@{concat('Bearer ', body('Request_Zscaler_OAuth_Token')?['access_token'])}",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "status": "ACTIVE"
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT7S",
+                  "minimumInterval": "PT5S",
+                  "maximumInterval": "PT1H"
+                }
+              },
+              "limit": {
+                "timeout": "PT1M"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Check_Activation_Result": {
+              "type": "If",
+              "runAfter": {
+                "ZIA_Activate_Changes": [
+                  "Succeeded",
+                  "Failed",
+                  "TimedOut"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "greaterOrEquals": [
+                      "@coalesce(outputs('ZIA_Activate_Changes')?['statusCode'], 0)",
+                      200
+                    ]
+                  },
+                  {
+                    "less": [
+                      "@coalesce(outputs('ZIA_Activate_Changes')?['statusCode'], 0)",
+                      300
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Response_Mutation_Success": {
+                  "type": "Response",
+                  "runAfter": {},
+                  "inputs": {
+                    "statusCode": 200,
+                    "headers": {
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "status": "Succeeded",
+                      "operation": "@{toLower(trim(triggerBody()?['operation']))}",
+                      "entity": "@{trim(triggerBody()?['entity'])}",
+                      "approved": true,
+                      "activated": true,
+                      "safeToWriteIdempotencyMarker": true,
+                      "cloud": "@{parameters('ZscalerCloudName')}"
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Response_Activation_Failed": {
+                    "type": "Response",
+                    "runAfter": {},
+                    "inputs": {
+                      "statusCode": 502,
+                      "headers": {
+                        "Content-Type": "application/json"
+                      },
+                      "body": {
+                        "status": "Failed",
+                        "code": "ActivationFailed",
+                        "safeToWriteIdempotencyMarker": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "teams": {
+                "connectionId": "[variables('TeamsConnectionId')]",
+                "connectionName": "[parameters('TeamsConnectionName')]",
+                "id": "[variables('TeamsManagedApiId')]"
+              }
+            }
+          },
+          "EnableMutatingOperations": {
+            "value": "[parameters('EnableMutatingOperations')]"
+          },
+          "ApproverUpn": {
+            "value": "[parameters('ApproverUpn')]"
+          },
+          "ApprovalTimeout": {
+            "value": "[parameters('ApprovalTimeout')]"
+          },
+          "KeyVaultUri": {
+            "value": "[parameters('KeyVaultUri')]"
+          },
+          "ZscalerClientIdSecretName": {
+            "value": "[parameters('ZscalerClientIdSecretName')]"
+          },
+          "ZscalerClientSecretSecretName": {
+            "value": "[parameters('ZscalerClientSecretSecretName')]"
+          },
+          "ZscalerTokenUrlSecretName": {
+            "value": "[parameters('ZscalerTokenUrlSecretName')]"
+          },
+          "ZscalerApiBaseUri": {
+            "value": "[parameters('ZscalerApiBaseUri')]"
+          },
+          "ZscalerCloudName": {
+            "value": "[parameters('ZscalerCloudName')]"
+          },
+          "IpBlockCategoryId": {
+            "value": "[parameters('IpBlockCategoryId')]"
+          },
+          "UrlBlockCategoryId": {
+            "value": "[parameters('UrlBlockCategoryId')]"
+          },
+          "UrlCategoryEndpointPath": {
+            "value": "[parameters('UrlCategoryEndpointPath')]"
+          },
+          "ActivationEndpointPath": {
+            "value": "[parameters('ActivationEndpointPath')]"
+          },
+          "LookupEndpointPath": {
+            "value": "[parameters('LookupEndpointPath')]"
+          },
+          "SecurityEndpointPath": {
+            "value": "[parameters('SecurityEndpointPath')]"
+          },
+          "AdvancedSecurityEndpointPath": {
+            "value": "[parameters('AdvancedSecurityEndpointPath')]"
+          },
+          "BlacklistRemoveEndpointPath": {
+            "value": "[parameters('BlacklistRemoveEndpointPath')]"
+          },
+          "LookupTimeout": {
+            "value": "[parameters('LookupTimeout')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowName": {
+      "type": "string",
+      "value": "[parameters('PlaybookName')]"
+    },
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('PlaybookName'))]"
+    },
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2019-05-01', 'Full').identity.principalId]"
+    },
+    "teamsConnectionResourceId": {
+      "type": "string",
+      "value": "[variables('TeamsConnectionId')]"
+    }
+  }
+}

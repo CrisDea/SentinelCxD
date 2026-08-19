@@ -1,0 +1,135 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler CASB CRM Overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSCASBCRMLogs.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-casb-crm-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "55700313-c1ef-52c3-aa53-8eac4d1d6b0c",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "18ec6f03-f6d9-5817-9d36-2be61fe4781f",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-casb-crm-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_AuditEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbcrmlog'\n| extend Application=coalesce(tostring(column_ifexists('EventOriginalType','')), tostring(AdditionalFields['Application']))\n| summarize EventCount=count() by Application\n",
+        "size": 0,
+        "title": "Count of CASB CRM Events by Application",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "barchart",
+        "queryType": 0
+      },
+      "name": "zia-casb-crm-panel-01-9de573e1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_AuditEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbcrmlog'\n| summarize EventCount=count() by bin(TimeGenerated,1h)\n",
+        "size": 0,
+        "title": "CASB CRM Events Over Time",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart",
+        "queryType": 0
+      },
+      "name": "zia-casb-crm-panel-02-2f115ee1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_AuditEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbcrmlog'\n| project EventTimestamp=TimeGenerated, User=ActorUsername, Action=Operation, Identifier=tostring(AdditionalFields['Identifier'])\n| sort by EventTimestamp desc\n",
+        "size": 0,
+        "title": "CASB CRM Detailed Security Event Information",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "name": "zia-casb-crm-panel-03-318192ec"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-casb-crm",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

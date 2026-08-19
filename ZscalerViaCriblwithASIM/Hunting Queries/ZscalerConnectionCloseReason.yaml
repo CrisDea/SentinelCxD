@@ -1,0 +1,37 @@
+id: 5467efc0-422c-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Connection Close Reasons (Zscaler ZPA)
+description: |
+  Shows the 20 most frequent ZPA session-close reasons and affected users. Session close is
+  represented by ASIM EventSubType End. The close reason is expected in
+  EventOriginalResultDetails, with AdditionalFields.ConnectionCloseReason as a documented
+  vendor-specific fallback.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  let TopCloseReasons =
+      _Im_NetworkSession
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+      | where EventSubType == "End"
+      | extend ZPA = todynamic(AdditionalFields)
+      | extend CloseReason = coalesce(EventOriginalResultDetails, tostring(ZPA.ConnectionCloseReason))
+      | where isnotempty(CloseReason)
+      | summarize EventCount = count(), Users = make_set(SrcUsername, 1000) by CloseReason
+      | top 20 by EventCount desc;
+  TopCloseReasons
+  | mv-expand AccountCustomEntity = Users to typeof(string)
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+

@@ -1,0 +1,177 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler Office 365 overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsOffice365.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-office365-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "36283e54-4bf9-55f4-93e5-824c5dd248c8",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "ad8dc1c8-b288-575c-91ea-2294580f5728",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-office365-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend Application=tostring(AdditionalFields['Application'])\n| where Application has_any ('Microsoft','Skype','SharePoint','OneDrive','Outlook','office.com','Microsoft Forms','Microsoft Azure') and EventResult =~ 'Success'\n| summarize Count=count() by bin(TimeGenerated,{TimeRange:grain}), DestinationServiceName=Application\n",
+        "size": 0,
+        "title": "Microsoft services activity over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-office365-panel-01-393bef43"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend Application=tostring(AdditionalFields['Application']), Location=tostring(AdditionalFields['Location'])\n| where Application has_any ('Microsoft','Skype','SharePoint','OneDrive','Outlook','office.com','Microsoft Forms','Microsoft Azure') and EventResult =~ 'Success'\n| summarize BW_usage_MB=sum(todouble(NetworkBytes))/1024.0/1024.0 by bin(TimeGenerated,{TimeRange:grain}), SourceUserPrivileges=Location\n",
+        "size": 0,
+        "title": "BW consumption, by Microsoft apps (based on Location)",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-office365-panel-02-8435c7ac"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend Application=tostring(AdditionalFields['Application'])\n| where Application has_any ('Microsoft','Skype','SharePoint','OneDrive','Outlook','office.com','Microsoft Forms','Microsoft Azure') and EventResult =~ 'Success'\n| summarize BW_usage_MB=sum(todouble(NetworkBytes))/1024.0/1024.0 by bin(TimeGenerated,{TimeRange:grain}), DestinationServiceName=Application\n",
+        "size": 0,
+        "title": "BW consumption, by Microsoft Apps (based on App)",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-office365-panel-03-35f3ee14"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend Application=tostring(AdditionalFields['Application']), VendorThreatCategory=tostring(AdditionalFields['ThreatCategory'])\n| where Application has_any ('Microsoft','Skype','SharePoint','OneDrive','Outlook','office.com','Microsoft Forms','Microsoft Azure') and EventResult =~ 'Failure' and (ThreatCategory =~ 'Phishing' or VendorThreatCategory =~ 'Phishing')\n| summarize Count=count() by bin(TimeGenerated,{TimeRange:grain}), DestinationServiceName=Application\n",
+        "size": 0,
+        "title": "Phishing attempts disguised as Microsoft services",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "DestinationServiceName",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "count_",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-office365-panel-04-e007a8ef"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-office365",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

@@ -1,0 +1,135 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler CASB Email Overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSCASBEmail.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-casb-email-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "0c28ed61-fc8a-5065-8d40-135b169effaa",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "1cdbb831-e969-505f-8086-102ac1f9d907",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-casb-email-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbemaillog'\n| extend Application=coalesce(EventOriginalType, tostring(AdditionalFields['Application']))\n| summarize EventCount=count() by Application\n",
+        "size": 0,
+        "title": "Count of CASB Email Events by Application",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "barchart",
+        "queryType": 0
+      },
+      "name": "zia-casb-email-panel-01-5b2f5182"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbemaillog'\n| summarize EventCount=count() by bin(TimeGenerated,1h)\n",
+        "size": 0,
+        "title": "CASB Email Events Over Time",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart",
+        "queryType": 0
+      },
+      "name": "zia-casb-email-panel-02-2d3304c0"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSCasbemaillog'\n| project EventTimestamp=TimeGenerated, User=coalesce(tostring(AdditionalFields['Owner']), ActorUsername), Action=EventType, Identifier=tostring(AdditionalFields['Identifier'])\n| sort by EventTimestamp desc\n",
+        "size": 0,
+        "title": "CASB Email Detailed Security Event Information",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "name": "zia-casb-email-panel-03-f8decb27"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-casb-email",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

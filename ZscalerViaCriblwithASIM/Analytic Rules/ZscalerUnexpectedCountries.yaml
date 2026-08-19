@@ -1,0 +1,43 @@
+id: 837730b5-852d-4382-9ff6-e21476fc5b69
+name: ASIM - Zscaler Forbidden Countries (Zscaler ZPA)
+description: |
+  'Detects suspicious Zscaler Private Access (ZPA) connections established from countries that are not
+  expected to originate connections to the environment.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - Forbidden countries"
+  (original id b3d112b4-3e1e-11ec-9bbc-0242ac130002, ZPAEvent table) to use the ASIM Network Session
+  normalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == "open" is mapped to
+  DvcAction == "Allow" (the ASIM enumerated value for a permitted session), and DstUserName in the raw
+  ZPAEvent table is mapped to SrcUsername, since it identifies the connecting (source) user.'
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  let bl_countries = dynamic(['CH', 'RU']); //List of countries from which you do not expect ZPA connections
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where DvcAction == "Allow"
+  | where SrcGeoCountry in~ (bl_countries)
+  | extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0
+kind: Scheduled

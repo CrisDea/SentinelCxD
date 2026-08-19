@@ -1,0 +1,135 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler Tunnel Overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSTunnelLogs.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-tunnel-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "116f0108-c471-5ddc-8625-0dac6479f968",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "33423dbd-d072-5e17-a6c4-0be851e12b6b",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-tunnel-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSTunnellog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId']))\n| where EventClassId =~ 'Tunnel Samples'\n| summarize ReceivedBytesSum=sum(todouble(DstBytes)), SentBytesSum=sum(todouble(SrcBytes)) by bin(TimeGenerated,30m)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "title": "The bytes received and transmitted in a 60-second sample window by Zscaler from the customer",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-tunnel-panel-01-1ad0ff97"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSTunnellog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId'])), LocationName=tostring(AdditionalFields['Location'])\n| where EventClassId =~ 'Tunnel Samples' and isnotempty(LocationName)\n| distinct LocationName\n| order by LocationName asc\n",
+        "size": 0,
+        "title": "List of locations",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "name": "zia-tunnel-panel-02-090234d1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSTunnellog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId'])), Activity=coalesce(tostring(AdditionalFields['Action']),DvcAction), Reason=EventResultDetails\n| where EventClassId =~ 'Tunnel Event'\n| summarize Count=count() by Activity,Reason\n| order by Count desc\n",
+        "size": 0,
+        "title": "Tunnel status events",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-tunnel-panel-03-af115f89"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-tunnel",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

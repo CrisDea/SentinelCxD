@@ -1,0 +1,679 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler Threats Overview â€” ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsThreats.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-web-threats-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "6955cffd-acc5-5c1f-94af-91ae7e4166ff",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "e6334910-2ec7-5ae9-ad91-73cb1a38e60d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-web-threats-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure' and isnotempty(ThreatName) and ThreatName !in~ ('None','suspiciousfile')\n| summarize Count=count() by ['Threat name']=ThreatName,threatname=ThreatName\n| order by Count desc\n",
+        "size": 0,
+        "title": "Blocked threats",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "threatname",
+        "exportParameterName": "threatname",
+        "exportDefaultValue": "All",
+        "exportToExcelOptions": "visible",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Threat name",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "threatname",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "greenRed",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "30",
+      "name": "zia-web-threats-panel-01-140bdfcd"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure' and isnotempty(ThreatName) and ThreatName !in~ ('None','suspiciousfile') and ('{threatname}' == 'All' or ThreatName == '{threatname}')\n| summarize Count=count() by bin(TimeGenerated,{TimeRange:grain}),['Threat name']=ThreatName\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked threats over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "70",
+      "name": "zia-web-threats-panel-02-ca461eab"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure' and isnotempty(UrlCategory)\n| summarize Count=count() by urlcat=UrlCategory\n| order by Count desc\n",
+        "size": 0,
+        "title": "Blocked URL categories",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "urlcat",
+        "exportParameterName": "urlcat",
+        "exportDefaultValue": "All",
+        "exportToExcelOptions": "visible",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "urlcat",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "greenRed",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "urlcat",
+              "label": "URL categories"
+            },
+            {
+              "columnId": "Count",
+              "label": ""
+            }
+          ]
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "30",
+      "name": "zia-web-threats-panel-03-9b0ddf1b"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure' and isnotempty(UrlCategory) and ('{urlcat}' == 'All' or UrlCategory == '{urlcat}')\n| summarize Count=count() by urlcat=UrlCategory,bin(TimeGenerated,{TimeRange:grain})\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked URL categories over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "70",
+      "name": "zia-web-threats-panel-04-37d3900b"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend Activity=tostring(AdditionalFields['Action'])\n| where Activity contains 'IPS'\n| summarize Count=count() by Activity\n| order by Count desc\n",
+        "size": 0,
+        "title": "Transactions blocked IPS",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "Activity",
+        "exportParameterName": "Activity",
+        "exportDefaultValue": "All",
+        "exportToExcelOptions": "visible",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Activity",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "greenRed",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "30",
+      "name": "zia-web-threats-panel-05-7976acd2"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend Activity=tostring(AdditionalFields['Action'])\n| where Activity contains 'IPS' and ('{Activity}' == 'All' or Activity == '{Activity}')\n| summarize Count=count() by Activity,bin(TimeGenerated,{TimeRange:grain})\n| order by Count desc\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Transactions blocked IPS over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Activity",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "SourceIP",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true,
+                "aggregation": "Unique"
+              }
+            },
+            {
+              "columnMatch": "DestinationIP",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true,
+                "aggregation": "Unique"
+              }
+            },
+            {
+              "columnMatch": "TimeGenerated",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "orangeBlue",
+                "showIcon": true,
+                "aggregation": "Sum"
+              }
+            },
+            {
+              "columnMatch": "count_",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true,
+                "aggregation": "Sum"
+              }
+            },
+            {
+              "columnMatch": "$gen_group",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "Activity",
+              "SourceIP",
+              "DestinationIP"
+            ]
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "70",
+      "name": "zia-web-threats-panel-06-4bd4c9a0"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend RiskScore=todouble(tostring(AdditionalFields['RiskScore']))\n| where RiskScore >= 50 and isnotempty(SrcUsername)\n| summarize Count=count() by SourceUserName=SrcUsername,RiskScore\n| order by RiskScore desc,Count desc\n",
+        "size": 0,
+        "title": "Users accessing malicious destinations",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "SourceUserName",
+        "exportParameterName": "SourceUserName",
+        "exportDefaultValue": "All",
+        "exportToExcelOptions": "visible",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "SourceUserName",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "RiskScore",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 50,
+                "palette": "greenRed",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "30",
+      "name": "zia-web-threats-panel-07-718b0023"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend RiskScore=todouble(tostring(AdditionalFields['RiskScore']))\n| where RiskScore >= 50 and isnotempty(SrcUsername) and ('{SourceUserName}' == 'All' or SrcUsername == '{SourceUserName}')\n| summarize Count=count() by bin(TimeGenerated,{TimeRange:grain}),SourceUserName=SrcUsername\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Users accessing malicious destinations over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "70",
+      "name": "zia-web-threats-panel-08-d975e96d"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend FileType=tostring(AdditionalFields['FileType'])\n| where isnotempty(FileType) and FileType !~ 'None'\n| summarize Count=count() by FileType\n| top 10 by Count desc\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked file types",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-09-9c61c59c"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend malwarecat=tostring(AdditionalFields['MalwareCategory'])\n| where isnotempty(malwarecat) and malwarecat !~ 'None'\n| summarize Count=count() by malwarecat\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Transactions intercepted by malware protection",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "malwarecat",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "count_",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "malwarecat",
+              "label": "Malware Categoty"
+            },
+            {
+              "columnId": "count_"
+            }
+          ]
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-10-bd9ef0f1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend RiskScore=todouble(tostring(AdditionalFields['RiskScore']))\n| where RiskScore > 0 and HttpRequestMethod in~ ('GET','POST')\n| extend Direction=iff(HttpRequestMethod =~ 'GET','Inbound Threats','Outbound Threats')\n| summarize Count=count() by Direction\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Inbound and outbound blocked threats",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "replaced",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "count_",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-11-3c8b762c"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend urlclass=tostring(AdditionalFields['UrlClass'])\n| where urlclass =~ 'Advanced Security Risk'\n| summarize Count=count() by urlcat=UrlCategory\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked advanced security risk URL categories",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-12-37d6b26a"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend malwarecat=tostring(AdditionalFields['MalwareCategory']),Location=tostring(AdditionalFields['Location'])\n| where Location =~ 'Road Warrior' and isnotempty(malwarecat) and malwarecat !~ 'None'\n| summarize Count=count() by malwarecat\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Threats blocked for Road Warriors",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-13-f6f00f44"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| extend SandboxCategory=tostring(AdditionalFields['SandboxCategory']),malwarecat=tostring(AdditionalFields['MalwareCategory'])\n| where SandboxCategory contains 'Behavior'\n| summarize Count=count() by malwarecat\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Threats intercepted by Sandbox protection",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-web-threats-panel-14-e2147c3e"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let data=materialize(\n_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| where isnotempty(DstGeoCountry)\n| extend MaliciousIPCountry=DstGeoCountry,Activity=coalesce(tostring(AdditionalFields['Action']),EventResultDetails));\nlet countryData=data\n| summarize TotalCount=count() by MaliciousIPCountry\n| join kind=inner (data | make-series Trend=count() default=0 on TimeGenerated in range({TimeRange:start},{TimeRange:end},{TimeRange:grain}) by MaliciousIPCountry) on MaliciousIPCountry\n| extend Id=strcat('country-',hash_sha256(MaliciousIPCountry)),Name=MaliciousIPCountry,Type='Location',ParentId=''\n| project Id,Name,Type,['MaliciousIPCountry Count']=TotalCount,Trend,ParentId;\nlet activityData=data\n| summarize TotalCount=count() by MaliciousIPCountry,Activity\n| join kind=inner (data | make-series Trend=count() default=0 on TimeGenerated in range({TimeRange:start},{TimeRange:end},{TimeRange:grain}) by MaliciousIPCountry,Activity) on MaliciousIPCountry,Activity\n| extend Id=strcat('action-',hash_sha256(strcat(MaliciousIPCountry,'|',Activity))),Name=Activity,Type='Activity',ParentId=strcat('country-',hash_sha256(MaliciousIPCountry))\n| project Id,Name,Type,['MaliciousIPCountry Count']=TotalCount,Trend,ParentId;\nunion activityData,countryData\n| order by ['MaliciousIPCountry Count'] desc,Name asc\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked destination activities, by location",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Id",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Type",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "MaliciousIPCountry Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "orangeRed",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 9,
+              "formatOptions": {
+                "min": 0,
+                "palette": "grayBlue",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "hierarchySettings": {
+            "idColumn": "Id",
+            "parentColumn": "ParentId",
+            "treeType": 0,
+            "expanderColumn": "Name"
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-threats-panel-15-1eaab095"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSWeblog'\n| where EventResult =~ 'Failure'\n| extend DestinationServiceName=tostring(AdditionalFields['Application'])\n| where isnotempty(DestinationServiceName) and DestinationServiceName !~ 'generalbrowsing'\n| summarize Count=count() by DestinationServiceName,bin(TimeGenerated,{TimeRange:grain})\n",
+        "size": 0,
+        "exportToExcelOptions": "visible",
+        "title": "Blocked cloud apps over time",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-web-threats-panel-16-279c9ca8"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-web-threats",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

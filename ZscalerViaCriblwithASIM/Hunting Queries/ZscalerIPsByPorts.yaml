@@ -1,0 +1,28 @@
+id: 20733e72-4231-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Destination Ports by IP (Zscaler ZPA)
+description: |
+  Shows destination IP addresses observed on each destination port.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where isnotempty(DstIpAddr) and isnotnull(DstPortNumber)
+  | summarize EventCount = count() by DstPortNumber, DstIpAddr
+  | order by DstPortNumber asc, EventCount desc
+  | extend IPCustomEntity = DstIpAddr
+entityMappings:
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0

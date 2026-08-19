@@ -1,0 +1,23 @@
+ZscalerCribl_CL
+| where not(disabled)
+| where array_index_of(AsimSchemas, 'Authentication') >= 0
+| where (isnull(starttime) or TimeGenerated >= starttime) and (isnull(endtime) or TimeGenerated < endtime)
+| where array_length(targetusername_has_any) == 0 or TargetUsername has_any (targetusername_has_any)
+| where array_length(actorusername_has_any) == 0 or ActorUsername has_any (actorusername_has_any)
+| where array_length(srcipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(SrcIpAddr, srcipaddr_has_any_prefix)
+| where array_length(srchostname_has_any) == 0 or SrcHostname has_any (srchostname_has_any)
+| where array_length(targetipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(DstIpAddr, targetipaddr_has_any_prefix)
+| where array_length(dvcipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(DvcIpAddr, dvcipaddr_has_any_prefix)
+| where array_length(dvchostname_has_any) == 0 or DvcHostname has_any (dvchostname_has_any)
+| where array_length(eventtype_in) == 0 or EventType in~ (eventtype_in)
+| where array_length(eventresultdetails_in) == 0 or EventResultDetails in~ (eventresultdetails_in)
+| where eventresult == '*' or EventResult =~ eventresult
+| extend EventSchema='Authentication', EventSchemaVersion='0.1.3', EventVendor='Zscaler',
+    AdditionalFields=bag_merge(iff(isnull(AdditionalFields), dynamic({}), AdditionalFields), bag_pack('ZscalerFamily', ZscalerFamily, 'ZscalerSubfamily', ZscalerSubfamily))
+| project TimeGenerated, EventStartTime, EventEndTime, EventSchema, EventSchemaVersion,
+    EventVendor, EventProduct, EventProductVersion, EventType, EventSubType, EventResult, EventResultDetails,
+    EventOriginalResultDetails, EventOriginalType, EventOriginalUid, EventUid, EventCount, EventSeverity,
+    EventOriginalSeverity, EventMessage, RuleName, ActorUsername, ActorUsernameType, ActorUserId,
+    TargetUsername, TargetUsernameType, TargetUserId, TargetAppName,
+    LogonMethod, AuthenticationProtocol, SrcIpAddr, SrcPortNumber, SrcHostname, SrcGeoCountry,
+    DvcHostname, DvcIpAddr, AdditionalFields

@@ -1,0 +1,33 @@
+let lookback = 7d;
+let Expected = datatable(Family:string, Subfamily:string, ExpectedRoute:bool)
+[
+  'ZIA_Audit','',true,
+  'ZIA_CASB_Activity','',true,
+  'ZIA_CASB_CRM','',true,
+  'ZIA_CASB_CloudStorage','',true,
+  'ZIA_CASB_Collaboration','',true,
+  'ZIA_CASB_Email','',true,
+  'ZIA_CASB_FileSharing','',true,
+  'ZIA_CASB_ITSM','',true,
+  'ZIA_CASB_Repository','',true,
+  'ZIA_DNS','',true,
+  'ZIA_Email_DLP','',true,
+  'ZIA_Endpoint_DLP','',true,
+  'ZIA_Firewall','',true,
+  'ZIA_Tunnel','',true,
+  'ZIA_Web','',true,
+  'ZPA','Access',true,
+  'ZPA','Authentication',true,
+  'ZPA','Administration',true
+];
+let Actual = ZscalerCribl_CL
+| where TimeGenerated >= ago(lookback)
+| summarize Events=count(), FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated)
+    by Family=ZscalerFamily, Subfamily=ZscalerSubfamily
+| extend ActualRoute=true;
+Expected
+| join kind=fullouter Actual on Family, Subfamily
+| extend Family=coalesce(Family, Family1), Subfamily=coalesce(Subfamily, Subfamily1),
+    Status=case(isnull(ActualRoute), 'Missing', isnull(ExpectedRoute), 'Unexpected', 'Expected')
+| project Family, Subfamily, Events=coalesce(Events, 0), FirstSeen, LastSeen, Status
+| order by Status desc, Family asc, Subfamily asc

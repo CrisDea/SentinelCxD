@@ -1,0 +1,77 @@
+id: bae077ed-775b-404f-ad1e-fb70e55451a6
+name: ASIM - Zscaler Shared ZPA Session (Zscaler ZPA)
+description: |
+  'Detects a shared Zscaler Private Access (ZPA) session, that is, the same user establishing a new session
+  from a different source IP address before their previous session has ended. This can indicate credential
+  sharing or session hijacking.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - Shared ZPA session"
+  (original id 40a98355-0e52-479f-8c91-4ab659cba878, ZPAEvent table) to use the ASIM Authentication
+  normalized schema (_Im_Authentication) instead of the raw ZPAEvent table. ZPA session establishment and
+  termination is treated as Logon/Logoff activity for the connecting user (SrcUserName in the raw ZPAEvent
+  table is mapped to TargetUsername in the Authentication schema, since it identifies the user who signed
+  in). Assumes a Cribl Stream pipeline maps ZPA session-open events to EventType "Logon" and session-close
+  events to EventType "Logoff" in _Im_Authentication.
+  Optimized to invoke the _Im_Authentication unifying parser exactly once per execution: it is materialized
+  into a single bounded result set (materialize(), filtered to the Zscaler ZPA product predicate) and the
+  open-session and closed-session branches are both derived from that materialized set, rather than each
+  querying _Im_Authentication directly. Referencing a unifying ASIM parser more than once in the same query
+  causes the engine to re-expand the underlying union of source-specific parsers for every reference, which
+  can exceed the Log Analytics relational operator tree complexity limit (CRT0015). This is a query-plan
+  optimization only; detection intent, thresholds, and entity mappings are unchanged.'
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimAuthentication
+    dataTypes:
+      - _Im_Authentication
+queryFrequency: 1h
+queryPeriod: 24h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1078
+  - T1133
+query: |
+  // Materialize the ASIM Authentication parser once, bounded to the Zscaler ZPA product predicate, so the
+  // open-session and closed-session branches below reuse the same result set instead of each triggering a
+  // separate expansion of the underlying unifying parser.
+  let AuthEvents = materialize(
+      _Im_Authentication
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  );
+  let open_sessions =
+  AuthEvents
+  | where EventType == "Logon" and EventResult == "Success"
+  | summarize timestampstart = min(TimeGenerated) by TargetUsername, SrcIpAddr
+  | sort by timestampstart asc;
+  let closed_sessions =
+  AuthEvents
+  | where TimeGenerated > ago(1h)
+  | where EventType == "Logoff"
+  | summarize timestampend = max(TimeGenerated) by TargetUsername, SrcIpAddr
+  | sort by timestampend asc;
+  open_sessions
+  | join (closed_sessions) on TargetUsername
+  | sort by TargetUsername, timestampstart asc
+  | extend prev_session_closetime = prev(timestampend, 1)
+  | extend prev_session_starttime = prev(timestampstart, 1)
+  | extend PreviousSrcIpAddr = prev(SrcIpAddr, 1)
+  | extend prev_sessionuser = prev(TargetUsername, 1)
+  | where TargetUsername == prev_sessionuser
+  | where SrcIpAddr != PreviousSrcIpAddr
+  | where prev_session_closetime > timestampstart
+  | project TargetUsername, SrcIpAddr, PreviousSrcIpAddr
+  | extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = TargetUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0
+kind: Scheduled

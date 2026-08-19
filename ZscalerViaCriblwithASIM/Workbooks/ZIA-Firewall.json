@@ -1,0 +1,418 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler Firewall Overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSFWLogs.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-firewall-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "3c404196-1421-575b-90a0-43ee718d171b",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "c6c56af3-6703-5620-bf5c-5349a421db51",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "a8d10267-010a-52d8-a048-c773875c158a",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourceIP",
+            "label": "Source IP",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n\n| where isnotempty(SrcIpAddr)\n| summarize Count=count() by Value=tostring(SrcIpAddr)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          },
+          {
+            "id": "2b29b321-19cb-5a7d-bc26-5674f132d998",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourcePort",
+            "label": "Source Port",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where isnotempty(SrcPortNumber)\n| summarize Count=count() by Value=tostring(SrcPortNumber)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          },
+          {
+            "id": "9dedc67a-d6c4-5d25-84b1-ae5977247409",
+            "version": "KqlParameterItem/1.0",
+            "name": "DestinationIP",
+            "label": "Destination IP",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n\n| where isnotempty(DstIpAddr)\n| summarize Count=count() by Value=tostring(DstIpAddr)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          },
+          {
+            "id": "853ad9ea-7710-57f1-916b-f64f17a1e984",
+            "version": "KqlParameterItem/1.0",
+            "name": "DestinationPort",
+            "label": "Destination Port",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where isnotempty(DstPortNumber)\n| summarize Count=count() by Value=tostring(DstPortNumber)\n| order by Count desc\n| project Value,Label=strcat(Value,' count: ',Count)\n| take 250",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "All"
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspaces}"
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-firewall-parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Block actions"
+      },
+      "name": "zia-firewall-section-02"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| summarize Count=count() by Protocol=NetworkApplicationProtocol\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked protocols",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-01-b8c8991a"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| extend Location=tostring(AdditionalFields['Location'])\n| where isnotempty(Location)\n| summarize Count=count() by Location\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked locations",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-02-e23ba9ae"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| where DstPortNumber != 0\n| summarize Count=count() by dst_port=tostring(DstPortNumber)\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked destination ports",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-03-da4a5d78"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| where isnotempty(DstIpAddr)\n| summarize Count=count() by DestinationIP=DstIpAddr\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked destination IP addresses",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-04-78dd1975"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| where isnotempty(SrcIpAddr)\n| summarize Count=count() by SourceTranslatedAddress=SrcIpAddr\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked source IP addresses",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-05-2ca40185"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Failure' or DvcAction in~ ('Deny','Drop','Block')\n| where SrcPortNumber != 0\n| summarize Count=count() by src_port=tostring(SrcPortNumber)\n| top 10 by Count desc\n",
+        "size": 0,
+        "title": "Top blocked source ports",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "33",
+      "name": "zia-firewall-panel-06-174ad159"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---"
+      },
+      "name": "zia-firewall-section-09"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Success' or DvcAction =~ 'Allow'\n| extend Location=tostring(AdditionalFields['Location'])\n| summarize ['Recived MB']=sum(todouble(DstBytes))/1024.0/1024.0, ['Sent MB']=sum(todouble(SrcBytes))/1024.0/1024.0 by bin(TimeGenerated,{TimeRange:grain}), Location\n| order by ['Recived MB'] desc,['Sent MB'] desc\n",
+        "size": 0,
+        "title": "Non-http downloads and uploads in MB",
+        "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "Location",
+        "exportParameterName": "LocationFilter",
+        "exportDefaultValue": "All",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "TimeGenerated",
+              "formatter": 6,
+              "formatOptions": {
+                "min": 0,
+                "palette": "turquoise",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Location",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Recived MB",
+              "formatter": 3,
+              "formatOptions": {
+                "min": 0,
+                "palette": "purple",
+                "showIcon": true,
+                "aggregation": "Sum"
+              }
+            },
+            {
+              "columnMatch": "Sent MB",
+              "formatter": 3,
+              "formatOptions": {
+                "min": 0,
+                "palette": "magenta",
+                "showIcon": true,
+                "aggregation": "Sum"
+              }
+            }
+          ],
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "Location"
+            ],
+            "expandTopLevel": false,
+            "finalBy": "Location"
+          }
+        },
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-firewall-panel-07-f5b029e4"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where EventResult =~ 'Success' or DvcAction =~ 'Allow'\n| extend Location=tostring(AdditionalFields['Location'])\n| where '{LocationFilter}' == 'All' or Location == '{LocationFilter}'\n| summarize ['Recived MB']=sum(todouble(DstBytes))/1024.0/1024.0, ['Sent MB']=sum(todouble(SrcBytes))/1024.0/1024.0 by bin(TimeGenerated,{TimeRange:grain}), Location\n",
+        "size": 0,
+        "title": "Non-http downloads and uploads in MB — selected location",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "areachart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "customWidth": "50",
+      "name": "zia-firewall-panel-08-847bdfa6"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSFWlog'\n| where ('{SourceIP:label}' == 'All' or SrcIpAddr in ({SourceIP}))\n| where ('{SourcePort:label}' == 'All' or tostring(SrcPortNumber) in ({SourcePort}))\n| where ('{DestinationIP:label}' == 'All' or DstIpAddr in ({DestinationIP}))\n| where ('{DestinationPort:label}' == 'All' or tostring(DstPortNumber) in ({DestinationPort}))\n| where isnotempty(NetworkRuleName) and NetworkRuleName !contains 'Default' and NetworkRuleName !contains 'Recommended'\n| summarize count() by bin(TimeGenerated,{TimeRange:grain}), Activity=NetworkRuleName\n",
+        "size": 0,
+        "title": "Non-default firewall rules getting triggered",
+        "timeContextFromParameter": "TimeRange",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-firewall-panel-09-cc723bae"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-firewall",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

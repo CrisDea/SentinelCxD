@@ -1,0 +1,21 @@
+union
+  (vimZscalerCriblAuditEvent() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblAuditEvent', Layer='source'),
+  (vimZscalerCriblAuthentication() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblAuthentication', Layer='source'),
+  (vimZscalerCriblDns() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblDns', Layer='source'),
+  (vimZscalerCriblFileEvent() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblFileEvent', Layer='source'),
+  (vimZscalerCriblNetworkSession() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblNetworkSession', Layer='source'),
+  (vimZscalerCriblWebSession() | take 0 | summarize Rows=count() | extend Parser='vimZscalerCriblWebSession', Layer='source'),
+  (Im_AuditEventCustom() | take 0 | summarize Rows=count() | extend Parser='Im_AuditEventCustom', Layer='custom-unifying'),
+  (Im_AuthenticationCustom() | take 0 | summarize Rows=count() | extend Parser='Im_AuthenticationCustom', Layer='custom-unifying'),
+  (Im_DnsCustom() | take 0 | summarize Rows=count() | extend Parser='Im_DnsCustom', Layer='custom-unifying'),
+  (Im_FileEventCustom() | take 0 | summarize Rows=count() | extend Parser='Im_FileEventCustom', Layer='custom-unifying'),
+  (Im_NetworkSessionCustom() | take 0 | summarize Rows=count() | extend Parser='Im_NetworkSessionCustom', Layer='custom-unifying'),
+  (Im_WebSessionCustom() | take 0 | summarize Rows=count() | extend Parser='Im_WebSessionCustom', Layer='custom-unifying'),
+  (_Im_AuditEvent(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_AuditEvent', Layer='built-in'),
+  (_Im_Authentication(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_Authentication', Layer='built-in'),
+  (_Im_Dns(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_Dns', Layer='built-in'),
+  (_Im_FileEvent(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_FileEvent', Layer='built-in'),
+  (_Im_NetworkSession(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_NetworkSession', Layer='built-in'),
+  (_Im_WebSession(starttime=ago(1h)) | take 0 | summarize Rows=count() | extend Parser='_Im_WebSession', Layer='built-in')
+| project Layer, Parser, Compiled=true, Rows
+| order by Layer asc, Parser asc

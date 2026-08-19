@@ -1,0 +1,305 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceRepository": "https://github.com/Azure/Azure-Sentinel",
+  "sourceCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+  "ingestionPath": "Cribl",
+  "normalization": "ASIM",
+  "workbookCount": 17,
+  "sourcePanelCount": 81,
+  "mappedPanelCount": 81,
+  "workbooks": [
+    {
+      "upstreamFile": "NSSAuditLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSAuditLogs.json",
+      "workbookFile": "ZIA-Audit.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_AuditEvent"
+      ],
+      "additionalFieldsKeys": [
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBActivityLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBActivityLogs.json",
+      "workbookFile": "ZIA-CASB-Activity.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_AuditEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBCloudStorageLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBCloudStorageLogs.json",
+      "workbookFile": "ZIA-CASB-Cloud-Storage.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBCollabLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBCollabLogs.json",
+      "workbookFile": "ZIA-CASB-Collaboration.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_AuditEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBCRMLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBCRMLogs.json",
+      "workbookFile": "ZIA-CASB-CRM.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_AuditEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBEmail.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBEmail.json",
+      "workbookFile": "ZIA-CASB-Email.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType",
+        "Owner"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBFileSharingLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBFileSharingLogs.json",
+      "workbookFile": "ZIA-CASB-File-Sharing.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBITSMLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBITSMLogs.json",
+      "workbookFile": "ZIA-CASB-ITSM.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_AuditEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSCASBRepoLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSCASBRepoLogs.json",
+      "workbookFile": "ZIA-CASB-Repository.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Identifier",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSDNSLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSDNSLogs.json",
+      "workbookFile": "ZIA-DNS.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_Dns"
+      ],
+      "additionalFieldsKeys": [
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSEmailDLPLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSEmailDLPLogs.json",
+      "workbookFile": "ZIA-Email-DLP.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "AttachmentFileType",
+        "DlpDictionary",
+        "DlpRule",
+        "EventClassId",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSEndpointDLPLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSEndpointDLPLogs.json",
+      "workbookFile": "ZIA-Endpoint-DLP.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_FileEvent"
+      ],
+      "additionalFieldsKeys": [
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSFWLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSFWLogs.json",
+      "workbookFile": "ZIA-Firewall.json",
+      "sourcePanelCount": 9,
+      "mappedPanelCount": 9,
+      "parserDependencies": [
+        "_Im_NetworkSession"
+      ],
+      "additionalFieldsKeys": [
+        "Location",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSTunnelLogs.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSTunnelLogs.json",
+      "workbookFile": "ZIA-Tunnel.json",
+      "sourcePanelCount": 3,
+      "mappedPanelCount": 3,
+      "parserDependencies": [
+        "_Im_NetworkSession"
+      ],
+      "additionalFieldsKeys": [
+        "Action",
+        "EventClassId",
+        "Location",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSWebLogsOffice365.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsOffice365.json",
+      "workbookFile": "ZIA-Office365.json",
+      "sourcePanelCount": 4,
+      "mappedPanelCount": 4,
+      "parserDependencies": [
+        "_Im_WebSession"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "Location",
+        "LogType",
+        "ThreatCategory"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSWebLogsOverview.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsOverview.json",
+      "workbookFile": "ZIA-Web-Overview.json",
+      "sourcePanelCount": 13,
+      "mappedPanelCount": 13,
+      "parserDependencies": [
+        "_Im_WebSession"
+      ],
+      "additionalFieldsKeys": [
+        "Application",
+        "DeviceModel",
+        "Location",
+        "LogType"
+      ],
+      "status": "mapped"
+    },
+    {
+      "upstreamFile": "NSSWebLogsThreats.json",
+      "upstreamCommit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+      "upstreamPath": "Solutions/Zscaler Internet Access/Workbooks/NSSWebLogsThreats.json",
+      "workbookFile": "ZIA-Web-Threats.json",
+      "sourcePanelCount": 16,
+      "mappedPanelCount": 16,
+      "parserDependencies": [
+        "_Im_WebSession"
+      ],
+      "additionalFieldsKeys": [
+        "Action",
+        "Application",
+        "FileType",
+        "Location",
+        "LogType",
+        "MalwareCategory",
+        "RiskScore",
+        "SandboxCategory",
+        "UrlClass"
+      ],
+      "status": "mapped"
+    }
+  ]
+}

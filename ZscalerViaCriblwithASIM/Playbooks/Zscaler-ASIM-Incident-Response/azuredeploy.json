@@ -1,0 +1,1398 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "title": "Zscaler ASIM Incident Response",
+    "description": "Microsoft Sentinel incident-triggered Consumption Logic App that enriches an incident with ASIM-normalized network/web session context, requests explicit analyst approval over Microsoft Teams, and - only after approval - blocks the approved IP and URL entities in Zscaler Internet Access (ZIA) through the Zscaler OneAPI OAuth2 gateway. Zscaler OAuth2 credentials are stored in and retrieved from Azure Key Vault via the playbook's managed identity; no secrets are stored in this template.",
+    "prerequisites": [
+      "Deploy this template with WorkflowState left as Disabled (the default). Do not enable the workflow until every prerequisite below is complete.",
+      "Create (or reuse) an Azure Key Vault with soft delete and purge protection enabled. Store three secrets in it out-of-band: the Zscaler OneAPI OAuth2 client ID, the OAuth2 client secret, and the full OAuth2 token URL (for example https://<vanity-domain>.zslogin.net/oauth2/v1/token). Never place these values in this template, a parameters file, or source control.",
+      "Grant the deployed Logic App's system-assigned managed identity the 'Key Vault Secrets User' role (or an equivalent least-privilege role) scoped to that Key Vault, and the 'Log Analytics Reader' role scoped to the target Log Analytics workspace. This template intentionally does not create role assignments or automation rules; the surrounding infrastructure deployment owns RBAC and automation-rule wiring.",
+      "In the Zscaler OneAPI / ZIA admin console, create an OAuth2 API client authorized for the URL/IP category management and status-activation endpoints used by this playbook.",
+      "Authorize the Microsoft Teams API connection exactly once after deployment: open the 'teams' connection resource in the Azure portal (or Logic App designer) and complete interactive sign-in/consent for the account that will post and respond to the approval adaptive card. This delegated consent step cannot be automated by an ARM template.",
+      "Confirm the Microsoft Sentinel API connection (already configured for managed identity by this template) resolves correctly, and that the Logic App's managed identity has the Microsoft Sentinel Responder role assigned by the surrounding infrastructure deployment.",
+      "Only after the previous steps are verified, set WorkflowState to Enabled (or update the deployed resource's state) and attach this playbook to an incident-creation automation rule."
+    ],
+    "lastUpdateTime": "2025-06-01T00:00:00.000Z",
+    "entities": ["Ip", "Url"],
+    "tags": ["Zscaler", "ASIM", "Response", "Approval", "KeyVault"],
+    "support": {
+      "tier": "community"
+    },
+    "author": {
+      "name": "Zscaler-ASIM-Cribl-Sentinel content pack"
+    }
+  },
+  "parameters": {
+    "PlaybookName": {
+      "type": "string",
+      "defaultValue": "Zscaler-ASIM-Incident-Response",
+      "metadata": {
+        "description": "Name of the Logic App (playbook) resource."
+      }
+    },
+    "SentinelConnectionName": {
+      "type": "string",
+      "defaultValue": "azuresentinel-zscaler-asim-response",
+      "metadata": {
+        "description": "Name of the Microsoft Sentinel API connection resource used by this playbook (managed identity authentication)."
+      }
+    },
+    "TeamsConnectionName": {
+      "type": "string",
+      "defaultValue": "teams-zscaler-asim-response",
+      "metadata": {
+        "description": "Name of the Microsoft Teams API connection resource used by this playbook. Requires a one-time interactive authorization after deployment; see README.md."
+      }
+    },
+    "WorkflowState": {
+      "type": "string",
+      "defaultValue": "Disabled",
+      "allowedValues": ["Disabled", "Enabled"],
+      "metadata": {
+        "description": "Deployed state of the Logic App. Must remain Disabled until connections, RBAC and Key Vault secrets are configured; see README.md."
+      }
+    },
+    "LogAnalyticsWorkspaceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Customer ID (workspace GUID) of the target Log Analytics workspace that ASIM-normalized data is queried from."
+      }
+    },
+    "KeyVaultUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Base vault URI of the Azure Key Vault holding the Zscaler OneAPI OAuth2 credentials, for example https://<vault-name>.vault.azure.net. No trailing slash required."
+      }
+    },
+    "ZscalerClientIdSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-client-id",
+      "metadata": {
+        "description": "Name of the Key Vault secret holding the Zscaler OneAPI OAuth2 client ID."
+      }
+    },
+    "ZscalerClientSecretSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-client-secret",
+      "metadata": {
+        "description": "Name of the Key Vault secret holding the Zscaler OneAPI OAuth2 client secret."
+      }
+    },
+    "ZscalerTokenUrlSecretName": {
+      "type": "string",
+      "defaultValue": "zscaler-oneapi-token-url",
+      "metadata": {
+        "description": "Name of the Key Vault secret holding the full Zscaler OneAPI OAuth2 token URL, for example https://<vanity-domain>.zslogin.net/oauth2/v1/token."
+      }
+    },
+    "ZscalerApiBaseUri": {
+      "type": "string",
+      "defaultValue": "https://api.zsapi.net",
+      "metadata": {
+        "description": "Base URI of the Zscaler OneAPI gateway used for ZIA URL/IP category and activation calls. This is a public API endpoint, not a secret."
+      }
+    },
+    "ZscalerBlockCategory": {
+      "type": "string",
+      "defaultValue": "OTHER_MISCELLANEOUS",
+      "metadata": {
+        "description": "Name of the Zscaler ZIA URL category that approved IP and URL entities are added to for blocking."
+      }
+    },
+    "ApproverUpn": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "User principal name (email) of the analyst who receives the Microsoft Teams adaptive card and must explicitly approve or reject the block action."
+      }
+    },
+    "ApprovalTimeout": {
+      "type": "string",
+      "defaultValue": "PT8H",
+      "metadata": {
+        "description": "ISO 8601 duration the playbook waits for an explicit analyst decision on the Teams adaptive card before treating the incident as not approved, for example PT8H."
+      }
+    },
+    "AsimTimeRangeDays": {
+      "type": "int",
+      "defaultValue": 7,
+      "metadata": {
+        "description": "Number of days of history to include when querying ASIM-normalized tables for context on the extracted IP and URL entities."
+      }
+    },
+    "AsimRowLimit": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Maximum number of rows returned by the ASIM context query per normalized table."
+      }
+    }
+  },
+  "variables": {
+    "SentinelConnectionId": "[resourceId('Microsoft.Web/connections', parameters('SentinelConnectionName'))]",
+    "TeamsConnectionId": "[resourceId('Microsoft.Web/connections', parameters('TeamsConnectionName'))]",
+    "SentinelManagedApiId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]",
+    "TeamsManagedApiId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/teams')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('SentinelConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "V1",
+      "properties": {
+        "displayName": "[parameters('SentinelConnectionName')]",
+        "customParameterValues": {},
+        "parameterValueType": "Alternative",
+        "api": {
+          "id": "[variables('SentinelManagedApiId')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('TeamsConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "displayName": "[parameters('TeamsConnectionName')]",
+        "customParameterValues": {},
+        "api": {
+          "id": "[variables('TeamsManagedApiId')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('PlaybookName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "hidden-SentinelTemplateName": "Zscaler-ASIM-Incident-Response",
+        "hidden-SentinelTemplateVersion": "1.0",
+        "LogicAppsCategory": "security"
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('SentinelConnectionName'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('TeamsConnectionName'))]"
+      ],
+      "properties": {
+        "state": "[parameters('WorkflowState')]",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "type": "Object",
+              "defaultValue": {}
+            },
+            "BlockCategory": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ApproverUpn": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "AsimTimeRangeDays": {
+              "type": "Int",
+              "defaultValue": 7
+            },
+            "AsimRowLimit": {
+              "type": "Int",
+              "defaultValue": 50
+            },
+            "LogAnalyticsWorkspaceId": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "KeyVaultUri": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerClientIdSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerClientSecretSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerTokenUrlSecretName": {
+              "type": "String",
+              "defaultValue": ""
+            },
+            "ZscalerApiBaseUri": {
+              "type": "String",
+              "defaultValue": ""
+            }
+          },
+          "triggers": {
+            "Microsoft_Sentinel_incident": {
+              "type": "ApiConnectionWebhook",
+              "inputs": {
+                "body": {
+                  "callback_url": "@{listCallbackUrl()}"
+                },
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                  }
+                },
+                "path": "/incident-creation"
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "runs": 1,
+                  "maximumWaitingRuns": 1
+                }
+              }
+            }
+          },
+          "actions": {
+            "Initialize_Playbook_Variables": {
+              "type": "InitializeVariable",
+              "runAfter": {},
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "IdempotencyLabel",
+                    "type": "string",
+                    "value": "@{concat('ZscalerBlockApplied-', parameters('BlockCategory'))}"
+                  },
+                  {
+                    "name": "CandidateIPs",
+                    "type": "array",
+                    "value": []
+                  },
+                  {
+                    "name": "CandidateUrls",
+                    "type": "array",
+                    "value": []
+                  },
+                  {
+                    "name": "AllCandidates",
+                    "type": "array",
+                    "value": []
+                  },
+                  {
+                    "name": "AsimContextSummary",
+                    "type": "string",
+                    "value": ""
+                  },
+                  {
+                    "name": "ApprovedValues",
+                    "type": "array",
+                    "value": []
+                  },
+                  {
+                    "name": "ApprovedEntitySummaryLines",
+                    "type": "array",
+                    "value": []
+                  },
+                  {
+                    "name": "RejectedEntitySummaryLines",
+                    "type": "array",
+                    "value": []
+                  }
+                ]
+              }
+            },
+            "Check_Idempotency_Marker": {
+              "type": "If",
+              "runAfter": {
+                "Initialize_Playbook_Variables": ["Succeeded"]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "contains": [
+                      "@string(coalesce(triggerBody()?['object']?['properties']?['labels'], createArray()))",
+                      "@variables('IdempotencyLabel')"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Add_Comment_Duplicate_Skip": {
+                  "type": "ApiConnection",
+                  "runAfter": {},
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/Incidents/Comment",
+                    "body": {
+                      "incidentArmId": "@triggerBody()?['object']?['id']",
+                      "message": "<p><strong>Zscaler ASIM Incident Response:</strong> this incident already carries the idempotency label for the configured block category. Skipping duplicate execution to avoid repeating the block/activation workflow.</p>"
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "secureData": {
+                      "properties": ["inputs", "outputs"]
+                    }
+                  }
+                },
+                "Terminate_Duplicate": {
+                  "type": "Terminate",
+                  "runAfter": {
+                    "Add_Comment_Duplicate_Skip": ["Succeeded"]
+                  },
+                  "inputs": {
+                    "runStatus": "Succeeded"
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Entities_Get_IPs": {
+                    "type": "ApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "host": {
+                        "connection": {
+                          "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                      },
+                      "method": "post",
+                      "path": "/entities/ip",
+                      "body": "@triggerBody()?['object']?['properties']?['relatedEntities']"
+                    }
+                  },
+                  "Entities_Get_URLs": {
+                    "type": "ApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "host": {
+                        "connection": {
+                          "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                      },
+                      "method": "post",
+                      "path": "/entities/url",
+                      "body": "@triggerBody()?['object']?['properties']?['relatedEntities']"
+                    }
+                  },
+                  "Check_Has_Entities": {
+                    "type": "If",
+                    "runAfter": {
+                      "Entities_Get_IPs": ["Succeeded"],
+                      "Entities_Get_URLs": ["Succeeded"]
+                    },
+                    "expression": {
+                      "or": [
+                        {
+                          "greater": [
+                            "@length(coalesce(body('Entities_Get_IPs')?['IPs'], createArray()))",
+                            0
+                          ]
+                        },
+                        {
+                          "greater": [
+                            "@length(coalesce(body('Entities_Get_URLs')?['URLs'], createArray()))",
+                            0
+                          ]
+                        }
+                      ]
+                    },
+                    "actions": {
+                      "Select_Candidate_IPs": {
+                        "type": "Select",
+                        "runAfter": {},
+                        "inputs": {
+                          "from": "@coalesce(body('Entities_Get_IPs')?['IPs'], createArray())",
+                          "select": "@item()?['Address']"
+                        }
+                      },
+                      "Select_Candidate_URLs": {
+                        "type": "Select",
+                        "runAfter": {},
+                        "inputs": {
+                          "from": "@coalesce(body('Entities_Get_URLs')?['URLs'], createArray())",
+                          "select": "@item()?['Url']"
+                        }
+                      },
+                      "Select_Candidate_IP_Objects": {
+                        "type": "Select",
+                        "runAfter": {},
+                        "inputs": {
+                          "from": "@coalesce(body('Entities_Get_IPs')?['IPs'], createArray())",
+                          "select": {
+                            "Type": "IP",
+                            "Value": "@item()?['Address']"
+                          }
+                        }
+                      },
+                      "Select_Candidate_URL_Objects": {
+                        "type": "Select",
+                        "runAfter": {},
+                        "inputs": {
+                          "from": "@coalesce(body('Entities_Get_URLs')?['URLs'], createArray())",
+                          "select": {
+                            "Type": "URL",
+                            "Value": "@item()?['Url']"
+                          }
+                        }
+                      },
+                      "Set_Candidate_IPs": {
+                        "type": "SetVariable",
+                        "runAfter": {
+                          "Select_Candidate_IPs": ["Succeeded"]
+                        },
+                        "inputs": {
+                          "name": "CandidateIPs",
+                          "value": "@coalesce(body('Select_Candidate_IPs'), createArray())"
+                        }
+                      },
+                      "Set_Candidate_URLs": {
+                        "type": "SetVariable",
+                        "runAfter": {
+                          "Select_Candidate_URLs": ["Succeeded"]
+                        },
+                        "inputs": {
+                          "name": "CandidateUrls",
+                          "value": "@coalesce(body('Select_Candidate_URLs'), createArray())"
+                        }
+                      },
+                      "Set_All_Candidates": {
+                        "type": "SetVariable",
+                        "runAfter": {
+                          "Select_Candidate_IP_Objects": ["Succeeded"],
+                          "Select_Candidate_URL_Objects": ["Succeeded"]
+                        },
+                        "inputs": {
+                          "name": "AllCandidates",
+                          "value": "@union(coalesce(body('Select_Candidate_IP_Objects'), createArray()), coalesce(body('Select_Candidate_URL_Objects'), createArray()))"
+                        }
+                      },
+                      "Compose_ASIM_Query": {
+                        "type": "Compose",
+                        "runAfter": {
+                          "Set_Candidate_IPs": ["Succeeded"],
+                          "Set_Candidate_URLs": ["Succeeded"]
+                        },
+                        "inputs": "@{concat('let lookbackDays = ', string(parameters('AsimTimeRangeDays')), 'd;\n', 'let rowCap = ', string(parameters('AsimRowLimit')), ';\n', 'let candidateIPs = dynamic(', string(variables('CandidateIPs')), ');\n', 'let candidateUrls = dynamic(', string(variables('CandidateUrls')), ');\n', 'let webSession = _Im_WebSession(starttime = ago(lookbackDays))\n', '| where (array_length(candidateIPs) > 0 and SrcIpAddr in (candidateIPs)) or (array_length(candidateUrls) > 0 and Url has_any (candidateUrls))\n', '| project TimeGenerated, EventType, SrcIpAddr, Url, HttpStatusCode, EventResult\n', '| take rowCap;\n', 'let networkSession = _Im_NetworkSession(starttime = ago(lookbackDays))\n', '| where array_length(candidateIPs) > 0 and (SrcIpAddr in (candidateIPs) or DstIpAddr in (candidateIPs))\n', '| project TimeGenerated, EventType, SrcIpAddr, DstIpAddr, DstPortNumber, EventResult\n', '| take rowCap;\n', 'let dnsEvents = _Im_Dns(starttime = ago(lookbackDays))\n', '| where array_length(candidateUrls) > 0 and DnsQuery has_any (candidateUrls)\n', '| project TimeGenerated, EventType, DnsQuery, SrcIpAddr, EventResult\n', '| take rowCap;\n', 'union isfuzzy=true webSession, networkSession, dnsEvents\n', '| sort by TimeGenerated desc')}"
+                      },
+                      "HTTP_Query_ASIM_Context": {
+                        "type": "Http",
+                        "runAfter": {
+                          "Compose_ASIM_Query": ["Succeeded"]
+                        },
+                        "inputs": {
+                          "method": "POST",
+                          "uri": "@{concat('https://api.loganalytics.io/v1/workspaces/', parameters('LogAnalyticsWorkspaceId'), '/query')}",
+                          "headers": {
+                            "Content-Type": "application/json"
+                          },
+                          "body": {
+                            "query": "@{outputs('Compose_ASIM_Query')}"
+                          },
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "audience": "https://api.loganalytics.io"
+                          },
+                          "retryPolicy": {
+                            "type": "exponential",
+                            "count": 4,
+                            "interval": "PT7S",
+                            "minimumInterval": "PT5S",
+                            "maximumInterval": "PT1H"
+                          }
+                        },
+                        "limit": {
+                          "timeout": "PT2M"
+                        }
+                      },
+                      "Check_ASIM_Query_Status": {
+                        "type": "If",
+                        "runAfter": {
+                          "HTTP_Query_ASIM_Context": ["Succeeded", "Failed", "TimedOut"]
+                        },
+                        "expression": {
+                          "and": [
+                            {
+                              "greaterOrEquals": [
+                                "@coalesce(outputs('HTTP_Query_ASIM_Context')?['statusCode'], 0)",
+                                200
+                              ]
+                            },
+                            {
+                              "less": [
+                                "@coalesce(outputs('HTTP_Query_ASIM_Context')?['statusCode'], 0)",
+                                300
+                              ]
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "Set_ASIM_Summary_Success": {
+                            "type": "SetVariable",
+                            "runAfter": {},
+                            "inputs": {
+                              "name": "AsimContextSummary",
+                              "value": "@{concat('Returned ', string(length(coalesce(body('HTTP_Query_ASIM_Context')?['tables']?[0]?['rows'], createArray()))), ' ASIM row(s) across _Im_WebSession, _Im_NetworkSession and _Im_Dns for the last ', string(parameters('AsimTimeRangeDays')), ' day(s).')}"
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {
+                            "Set_ASIM_Summary_Failure": {
+                              "type": "SetVariable",
+                              "runAfter": {},
+                              "inputs": {
+                                "name": "AsimContextSummary",
+                                "value": "@{concat('ASIM context query did not complete successfully (status ', string(coalesce(outputs('HTTP_Query_ASIM_Context')?['statusCode'], 'unknown')), '). Continuing without enrichment context.')}"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "Add_Enrichment_Comment": {
+                        "type": "ApiConnection",
+                        "runAfter": {
+                          "Check_ASIM_Query_Status": ["Succeeded"],
+                          "Set_All_Candidates": ["Succeeded"]
+                        },
+                        "inputs": {
+                          "host": {
+                            "connection": {
+                              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                            }
+                          },
+                          "method": "post",
+                          "path": "/Incidents/Comment",
+                          "body": {
+                            "incidentArmId": "@triggerBody()?['object']?['id']",
+                            "message": "@{concat('<p><strong>Zscaler ASIM Incident Response - enrichment:</strong><br>Candidate IP(s): ', join(variables('CandidateIPs'), ', '), '<br>Candidate URL(s): ', join(variables('CandidateUrls'), ', '), '<br>ASIM context: ', variables('AsimContextSummary'), '<br>Each candidate entity below will be presented for individual analyst approval - no entity will be blocked in bulk.</p>')}"
+                          }
+                        },
+                        "runtimeConfiguration": {
+                          "secureData": {
+                            "properties": ["inputs", "outputs"]
+                          }
+                        }
+                      },
+                      "For_Each_Candidate_Request_Approval": {
+                        "type": "Foreach",
+                        "runAfter": {
+                          "Add_Enrichment_Comment": ["Succeeded"]
+                        },
+                        "foreach": "@variables('AllCandidates')",
+                        "actions": {
+                          "Compose_Candidate_Adaptive_Card": {
+                            "type": "Compose",
+                            "runAfter": {},
+                            "inputs": {
+                              "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                              "type": "AdaptiveCard",
+                              "version": "1.2",
+                              "body": [
+                                {
+                                  "type": "TextBlock",
+                                  "size": "Large",
+                                  "weight": "Bolder",
+                                  "wrap": true,
+                                  "text": "Zscaler ASIM Incident Response - approval requested for one entity"
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "text": "@{concat('Incident: ', coalesce(triggerBody()?['object']?['properties']?['title'], 'Unknown'), ' (severity ', coalesce(triggerBody()?['object']?['properties']?['severity'], 'Unknown'), ')')}"
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "text": "@{concat('Total candidate entities extracted from this incident: ', string(length(variables('AllCandidates'))))}"
+                                },
+                                {
+                                  "type": "FactSet",
+                                  "facts": [
+                                    {
+                                      "title": "Entity type:",
+                                      "value": "@{coalesce(item()?['Type'], 'Unknown')}"
+                                    },
+                                    {
+                                      "title": "Entity value:",
+                                      "value": "@{coalesce(item()?['Value'], 'Unknown')}"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "weight": "Bolder",
+                                  "color": "Attention",
+                                  "text": "@{if(equals(coalesce(item()?['Type'], ''), 'IP'), 'Caution: this is an IP address entity extracted from the incident. IP entities on a Sentinel incident may represent a source, client, internal, or victim IP address rather than a confirmed malicious host - verify the role of this exact IP using the ASIM context and the incident itself before approving a block.', 'Caution: verify this exact URL using the ASIM context and the incident itself before approving a block.')}"
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "text": "@{concat('ASIM context: ', variables('AsimContextSummary'))}"
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "text": "@{concat('Zscaler block category: ', parameters('BlockCategory'))}"
+                                },
+                                {
+                                  "type": "TextBlock",
+                                  "wrap": true,
+                                  "weight": "Bolder",
+                                  "text": "Approve blocking THIS entity in Zscaler ZIA?"
+                                }
+                              ],
+                              "actions": [
+                                {
+                                  "type": "Action.Submit",
+                                  "title": "Approve",
+                                  "data": {
+                                    "decision": "Approve"
+                                  }
+                                },
+                                {
+                                  "type": "Action.Submit",
+                                  "title": "Reject",
+                                  "data": {
+                                    "decision": "Reject"
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "Post_Candidate_Adaptive_Card_and_Wait_for_Approval": {
+                            "type": "ApiConnectionWebhook",
+                            "runAfter": {
+                              "Compose_Candidate_Adaptive_Card": ["Succeeded"]
+                            },
+                            "inputs": {
+                              "host": {
+                                "connection": {
+                                  "name": "@parameters('$connections')['teams']['connectionId']"
+                                }
+                              },
+                              "path": "/flowbot/actions/flowcontinuation/recipienttypes/user/$subscriptions",
+                              "body": {
+                                "body": {
+                                  "messageBody": "@{string(outputs('Compose_Candidate_Adaptive_Card'))}",
+                                  "recipient": {
+                                    "to": "@{parameters('ApproverUpn')}"
+                                  },
+                                  "shouldUpdateCard": true
+                                },
+                                "notificationUrl": "@{listCallbackUrl()}"
+                              }
+                            },
+                            "limit": {
+                              "timeout": "[parameters('ApprovalTimeout')]"
+                            },
+                            "runtimeConfiguration": {
+                              "secureData": {
+                                "properties": ["inputs", "outputs"]
+                              }
+                            }
+                          },
+                          "Check_Candidate_Approval": {
+                            "type": "If",
+                            "runAfter": {
+                              "Post_Candidate_Adaptive_Card_and_Wait_for_Approval": ["Succeeded", "Failed", "TimedOut"]
+                            },
+                            "expression": {
+                              "and": [
+                                {
+                                  "equals": [
+                                    "@coalesce(body('Post_Candidate_Adaptive_Card_and_Wait_for_Approval')?['data']?['decision'], coalesce(body('Post_Candidate_Adaptive_Card_and_Wait_for_Approval')?['submitActionId'], ''))",
+                                    "Approve"
+                                  ]
+                                }
+                              ]
+                            },
+                            "actions": {
+                              "Append_Approved_Value": {
+                                "type": "AppendToArrayVariable",
+                                "runAfter": {},
+                                "inputs": {
+                                  "name": "ApprovedValues",
+                                  "value": "@{coalesce(item()?['Value'], '')}"
+                                }
+                              },
+                              "Append_Approved_Summary_Line": {
+                                "type": "AppendToArrayVariable",
+                                "runAfter": {},
+                                "inputs": {
+                                  "name": "ApprovedEntitySummaryLines",
+                                  "value": "@{concat(coalesce(item()?['Type'], 'Unknown'), ': ', coalesce(item()?['Value'], 'Unknown'), ' - approved by ', parameters('ApproverUpn'))}"
+                                }
+                              }
+                            },
+                            "else": {
+                              "actions": {
+                                "Append_Rejected_Summary_Line": {
+                                  "type": "AppendToArrayVariable",
+                                  "runAfter": {},
+                                  "inputs": {
+                                    "name": "RejectedEntitySummaryLines",
+                                    "value": "@{concat(coalesce(item()?['Type'], 'Unknown'), ': ', coalesce(item()?['Value'], 'Unknown'), ' - not approved (rejected or approval window expired)')}"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "runtimeConfiguration": {
+                          "concurrency": {
+                            "repetitions": 1
+                          }
+                        }
+                      },
+                      "Check_Any_Approved": {
+                        "type": "If",
+                        "runAfter": {
+                          "For_Each_Candidate_Request_Approval": ["Succeeded"]
+                        },
+                        "expression": {
+                          "and": [
+                            {
+                              "greater": [
+                                "@length(coalesce(variables('ApprovedValues'), createArray()))",
+                                0
+                              ]
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "Compose_KeyVault_Base_Uri": {
+                            "type": "Compose",
+                            "runAfter": {},
+                            "inputs": "@{if(endsWith(parameters('KeyVaultUri'), '/'), substring(parameters('KeyVaultUri'), 0, sub(length(parameters('KeyVaultUri')), 1)), parameters('KeyVaultUri'))}"
+                          },
+                          "Get_Zscaler_ClientId_Secret": {
+                            "type": "Http",
+                            "runAfter": {
+                              "Compose_KeyVault_Base_Uri": ["Succeeded"]
+                            },
+                            "inputs": {
+                              "method": "GET",
+                              "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerClientIdSecretName'), '?api-version=7.4')}",
+                              "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://vault.azure.net"
+                              },
+                              "retryPolicy": {
+                                "type": "exponential",
+                                "count": 4,
+                                "interval": "PT7S",
+                                "minimumInterval": "PT5S",
+                                "maximumInterval": "PT1H"
+                              }
+                            },
+                            "limit": {
+                              "timeout": "PT30S"
+                            },
+                            "runtimeConfiguration": {
+                              "secureData": {
+                                "properties": ["inputs", "outputs"]
+                              }
+                            }
+                          },
+                          "Get_Zscaler_ClientSecret_Secret": {
+                            "type": "Http",
+                            "runAfter": {
+                              "Compose_KeyVault_Base_Uri": ["Succeeded"]
+                            },
+                            "inputs": {
+                              "method": "GET",
+                              "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerClientSecretSecretName'), '?api-version=7.4')}",
+                              "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://vault.azure.net"
+                              },
+                              "retryPolicy": {
+                                "type": "exponential",
+                                "count": 4,
+                                "interval": "PT7S",
+                                "minimumInterval": "PT5S",
+                                "maximumInterval": "PT1H"
+                              }
+                            },
+                            "limit": {
+                              "timeout": "PT30S"
+                            },
+                            "runtimeConfiguration": {
+                              "secureData": {
+                                "properties": ["inputs", "outputs"]
+                              }
+                            }
+                          },
+                          "Get_Zscaler_TokenUrl_Secret": {
+                            "type": "Http",
+                            "runAfter": {
+                              "Compose_KeyVault_Base_Uri": ["Succeeded"]
+                            },
+                            "inputs": {
+                              "method": "GET",
+                              "uri": "@{concat(outputs('Compose_KeyVault_Base_Uri'), '/secrets/', parameters('ZscalerTokenUrlSecretName'), '?api-version=7.4')}",
+                              "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://vault.azure.net"
+                              },
+                              "retryPolicy": {
+                                "type": "exponential",
+                                "count": 4,
+                                "interval": "PT7S",
+                                "minimumInterval": "PT5S",
+                                "maximumInterval": "PT1H"
+                              }
+                            },
+                            "limit": {
+                              "timeout": "PT30S"
+                            },
+                            "runtimeConfiguration": {
+                              "secureData": {
+                                "properties": ["inputs", "outputs"]
+                              }
+                            }
+                          },
+                          "Check_KeyVault_Secrets_Retrieved": {
+                            "type": "If",
+                            "runAfter": {
+                              "Get_Zscaler_ClientId_Secret": ["Succeeded", "Failed", "TimedOut"],
+                              "Get_Zscaler_ClientSecret_Secret": ["Succeeded", "Failed", "TimedOut"],
+                              "Get_Zscaler_TokenUrl_Secret": ["Succeeded", "Failed", "TimedOut"]
+                            },
+                            "expression": {
+                              "and": [
+                                {
+                                  "equals": [
+                                    "@coalesce(outputs('Get_Zscaler_ClientId_Secret')?['statusCode'], 0)",
+                                    200
+                                  ]
+                                },
+                                {
+                                  "equals": [
+                                    "@coalesce(outputs('Get_Zscaler_ClientSecret_Secret')?['statusCode'], 0)",
+                                    200
+                                  ]
+                                },
+                                {
+                                  "equals": [
+                                    "@coalesce(outputs('Get_Zscaler_TokenUrl_Secret')?['statusCode'], 0)",
+                                    200
+                                  ]
+                                }
+                              ]
+                            },
+                            "actions": {
+                              "Request_Zscaler_OAuth_Token": {
+                                "type": "Http",
+                                "runAfter": {},
+                                "inputs": {
+                                  "method": "POST",
+                                  "uri": "@{body('Get_Zscaler_TokenUrl_Secret')?['value']}",
+                                  "headers": {
+                                    "Content-Type": "application/x-www-form-urlencoded"
+                                  },
+                                  "body": "@{concat('grant_type=client_credentials&client_id=', encodeUriComponent(coalesce(body('Get_Zscaler_ClientId_Secret')?['value'], '')), '&client_secret=', encodeUriComponent(coalesce(body('Get_Zscaler_ClientSecret_Secret')?['value'], '')), '&audience=', encodeUriComponent(parameters('ZscalerApiBaseUri')))}",
+                                  "retryPolicy": {
+                                    "type": "exponential",
+                                    "count": 4,
+                                    "interval": "PT7S",
+                                    "minimumInterval": "PT5S",
+                                    "maximumInterval": "PT1H"
+                                  }
+                                },
+                                "limit": {
+                                  "timeout": "PT30S"
+                                },
+                                "runtimeConfiguration": {
+                                  "secureData": {
+                                    "properties": ["inputs", "outputs"]
+                                  }
+                                }
+                              },
+                              "Check_OAuth_Token_Status": {
+                                "type": "If",
+                                "runAfter": {
+                                  "Request_Zscaler_OAuth_Token": ["Succeeded", "Failed", "TimedOut"]
+                                },
+                                "expression": {
+                                  "and": [
+                                    {
+                                      "equals": [
+                                        "@coalesce(outputs('Request_Zscaler_OAuth_Token')?['statusCode'], 0)",
+                                        200
+                                      ]
+                                    },
+                                    {
+                                      "greater": [
+                                        "@length(coalesce(body('Request_Zscaler_OAuth_Token')?['access_token'], ''))",
+                                        0
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "actions": {
+                                  "Zscaler_Add_Entities_To_Category": {
+                                    "type": "Http",
+                                    "runAfter": {},
+                                    "inputs": {
+                                      "method": "PUT",
+                                      "uri": "@{concat(parameters('ZscalerApiBaseUri'), '/zia/api/v1/urlCategories/', parameters('BlockCategory'), '?action=ADD_TO_LIST')}",
+                                      "headers": {
+                                        "Authorization": "@{concat('Bearer ', coalesce(body('Request_Zscaler_OAuth_Token')?['access_token'], ''))}",
+                                        "Content-Type": "application/json"
+                                      },
+                                      "body": {
+                                        "configuredName": "@{parameters('BlockCategory')}",
+                                        "urls": "@{coalesce(variables('ApprovedValues'), createArray())}"
+                                      },
+                                      "retryPolicy": {
+                                        "type": "exponential",
+                                        "count": 4,
+                                        "interval": "PT7S",
+                                        "minimumInterval": "PT5S",
+                                        "maximumInterval": "PT1H"
+                                      }
+                                    },
+                                    "limit": {
+                                      "timeout": "PT1M"
+                                    },
+                                    "runtimeConfiguration": {
+                                      "secureData": {
+                                        "properties": ["inputs", "outputs"]
+                                      }
+                                    }
+                                  },
+                                  "Check_Zscaler_Add_Status": {
+                                    "type": "If",
+                                    "runAfter": {
+                                      "Zscaler_Add_Entities_To_Category": ["Succeeded", "Failed", "TimedOut"]
+                                    },
+                                    "expression": {
+                                      "and": [
+                                        {
+                                          "greaterOrEquals": [
+                                            "@coalesce(outputs('Zscaler_Add_Entities_To_Category')?['statusCode'], 0)",
+                                            200
+                                          ]
+                                        },
+                                        {
+                                          "less": [
+                                            "@coalesce(outputs('Zscaler_Add_Entities_To_Category')?['statusCode'], 0)",
+                                            300
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "actions": {
+                                      "Zscaler_Activate_Changes": {
+                                        "type": "Http",
+                                        "runAfter": {},
+                                        "inputs": {
+                                          "method": "POST",
+                                          "uri": "@{concat(parameters('ZscalerApiBaseUri'), '/zia/api/v1/status/activate')}",
+                                          "headers": {
+                                            "Authorization": "@{concat('Bearer ', coalesce(body('Request_Zscaler_OAuth_Token')?['access_token'], ''))}",
+                                            "Content-Type": "application/json"
+                                          },
+                                          "retryPolicy": {
+                                            "type": "exponential",
+                                            "count": 4,
+                                            "interval": "PT7S",
+                                            "minimumInterval": "PT5S",
+                                            "maximumInterval": "PT1H"
+                                          }
+                                        },
+                                        "limit": {
+                                          "timeout": "PT1M"
+                                        },
+                                        "runtimeConfiguration": {
+                                          "secureData": {
+                                            "properties": ["inputs", "outputs"]
+                                          }
+                                        }
+                                      },
+                                      "Check_Zscaler_Activate_Status": {
+                                        "type": "If",
+                                        "runAfter": {
+                                          "Zscaler_Activate_Changes": ["Succeeded", "Failed", "TimedOut"]
+                                        },
+                                        "expression": {
+                                          "and": [
+                                            {
+                                              "greaterOrEquals": [
+                                                "@coalesce(outputs('Zscaler_Activate_Changes')?['statusCode'], 0)",
+                                                200
+                                              ]
+                                            },
+                                            {
+                                              "less": [
+                                                "@coalesce(outputs('Zscaler_Activate_Changes')?['statusCode'], 0)",
+                                                300
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "actions": {
+                                          "Compose_Blocked_Summary_Html": {
+                                            "type": "Compose",
+                                            "runAfter": {},
+                                            "inputs": "@{concat('<ul><li>', join(coalesce(variables('ApprovedEntitySummaryLines'), createArray()), '</li><li>'), '</li></ul>')}"
+                                          },
+                                          "Add_Comment_Block_Success": {
+                                            "type": "ApiConnection",
+                                            "runAfter": {
+                                              "Compose_Blocked_Summary_Html": ["Succeeded"]
+                                            },
+                                            "inputs": {
+                                              "host": {
+                                                "connection": {
+                                                  "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                }
+                                              },
+                                              "method": "post",
+                                              "path": "/Incidents/Comment",
+                                              "body": {
+                                                "incidentArmId": "@triggerBody()?['object']?['id']",
+                                                "message": "@{concat('<p><strong>Zscaler ASIM Incident Response:</strong> analyst ', parameters('ApproverUpn'), ' approved blocking the following entities in Zscaler ZIA category ', parameters('BlockCategory'), ', and the change was activated:</p>', outputs('Compose_Blocked_Summary_Html'))}"
+                                              }
+                                            }
+                                          },
+                                          "Add_Idempotency_Success_Label": {
+                                            "type": "ApiConnection",
+                                            "runAfter": {
+                                              "Add_Comment_Block_Success": ["Succeeded"]
+                                            },
+                                            "inputs": {
+                                              "host": {
+                                                "connection": {
+                                                  "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                }
+                                              },
+                                              "method": "put",
+                                              "path": "/Incidents",
+                                              "body": {
+                                                "incidentArmId": "@triggerBody()?['object']?['id']",
+                                                "tagsToAdd": {
+                                                  "TagsToAdd": [
+                                                    {
+                                                      "Tag": "@{variables('IdempotencyLabel')}"
+                                                    },
+                                                    {
+                                                      "Tag": "ZscalerBlockCompleted"
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "else": {
+                                          "actions": {
+                                            "Add_Comment_Activate_Failed": {
+                                              "type": "ApiConnection",
+                                              "runAfter": {},
+                                              "inputs": {
+                                                "host": {
+                                                  "connection": {
+                                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                  }
+                                                },
+                                                "method": "post",
+                                                "path": "/Incidents/Comment",
+                                                "body": {
+                                                  "incidentArmId": "@triggerBody()?['object']?['id']",
+                                                  "message": "@{concat('<p><strong>Zscaler ASIM Incident Response:</strong> entities were added to category ', parameters('BlockCategory'), ' but the Zscaler activation call failed (status ', string(coalesce(outputs('Zscaler_Activate_Changes')?['statusCode'], 'unknown')), '). Manual activation in ZIA is required.</p>')}"
+                                                }
+                                              }
+                                            },
+                                            "Terminate_Activate_Failed": {
+                                              "type": "Terminate",
+                                              "runAfter": {
+                                                "Add_Comment_Activate_Failed": ["Succeeded"]
+                                              },
+                                              "inputs": {
+                                                "runStatus": "Failed",
+                                                "runError": {
+                                                  "code": "ZscalerActivateFailed",
+                                                  "message": "Zscaler ZIA activation call did not return a 2xx status."
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "else": {
+                                      "actions": {
+                                        "Add_Comment_Block_Failed": {
+                                          "type": "ApiConnection",
+                                          "runAfter": {},
+                                          "inputs": {
+                                            "host": {
+                                              "connection": {
+                                                "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                              }
+                                            },
+                                            "method": "post",
+                                            "path": "/Incidents/Comment",
+                                            "body": {
+                                              "incidentArmId": "@triggerBody()?['object']?['id']",
+                                              "message": "@{concat('<p><strong>Zscaler ASIM Incident Response:</strong> the request to add approved entities to Zscaler ZIA category ', parameters('BlockCategory'), ' failed (status ', string(coalesce(outputs('Zscaler_Add_Entities_To_Category')?['statusCode'], 'unknown')), '). No changes were activated.</p>')}"
+                                            }
+                                          }
+                                        },
+                                        "Terminate_Block_Failed": {
+                                          "type": "Terminate",
+                                          "runAfter": {
+                                            "Add_Comment_Block_Failed": ["Succeeded"]
+                                          },
+                                          "inputs": {
+                                            "runStatus": "Failed",
+                                            "runError": {
+                                              "code": "ZscalerBlockFailed",
+                                              "message": "Zscaler ZIA add-to-category call did not return a 2xx status."
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "else": {
+                                  "actions": {
+                                    "Add_Comment_OAuth_Failure": {
+                                      "type": "ApiConnection",
+                                      "runAfter": {},
+                                      "inputs": {
+                                        "host": {
+                                          "connection": {
+                                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                          }
+                                        },
+                                        "method": "post",
+                                        "path": "/Incidents/Comment",
+                                        "body": {
+                                          "incidentArmId": "@triggerBody()?['object']?['id']",
+                                          "message": "<p><strong>Zscaler ASIM Incident Response:</strong> the Zscaler OneAPI OAuth2 token request failed or returned no access token. No block was applied. Verify the Key Vault secrets and Zscaler OneAPI client configuration.</p>"
+                                        }
+                                      },
+                                      "runtimeConfiguration": {
+                                        "secureData": {
+                                          "properties": ["inputs", "outputs"]
+                                        }
+                                      }
+                                    },
+                                    "Terminate_OAuth_Failure": {
+                                      "type": "Terminate",
+                                      "runAfter": {
+                                        "Add_Comment_OAuth_Failure": ["Succeeded"]
+                                      },
+                                      "inputs": {
+                                        "runStatus": "Failed",
+                                        "runError": {
+                                          "code": "ZscalerOAuthFailed",
+                                          "message": "Zscaler OneAPI OAuth2 token request did not succeed."
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "else": {
+                              "actions": {
+                                "Add_Comment_KeyVault_Failure": {
+                                  "type": "ApiConnection",
+                                  "runAfter": {},
+                                  "inputs": {
+                                    "host": {
+                                      "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                      }
+                                    },
+                                    "method": "post",
+                                    "path": "/Incidents/Comment",
+                                    "body": {
+                                      "incidentArmId": "@triggerBody()?['object']?['id']",
+                                      "message": "<p><strong>Zscaler ASIM Incident Response:</strong> one or more Key Vault secret retrievals for the Zscaler OneAPI credentials failed. No block was applied. Verify the playbook's managed identity has 'Key Vault Secrets User' access and that the configured secret names exist.</p>"
+                                    }
+                                  },
+                                  "runtimeConfiguration": {
+                                    "secureData": {
+                                      "properties": ["inputs", "outputs"]
+                                    }
+                                  }
+                                },
+                                "Terminate_KeyVault_Failure": {
+                                  "type": "Terminate",
+                                  "runAfter": {
+                                    "Add_Comment_KeyVault_Failure": ["Succeeded"]
+                                  },
+                                  "inputs": {
+                                    "runStatus": "Failed",
+                                    "runError": {
+                                      "code": "KeyVaultRetrievalFailed",
+                                      "message": "One or more Zscaler OneAPI credential secrets could not be retrieved from Key Vault."
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {
+                            "Add_Comment_No_Candidates_Approved": {
+                              "type": "ApiConnection",
+                              "runAfter": {},
+                              "inputs": {
+                                "host": {
+                                  "connection": {
+                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                  }
+                                },
+                                "method": "post",
+                                "path": "/Incidents/Comment",
+                                "body": {
+                                  "incidentArmId": "@triggerBody()?['object']?['id']",
+                                  "message": "@{concat('<p><strong>Zscaler ASIM Incident Response:</strong> no candidate entity was explicitly approved by ', parameters('ApproverUpn'), '. Every candidate was either rejected or the approval window expired before a decision was received. No Key Vault secrets were retrieved, no Zscaler OneAPI calls were made, and no idempotency marker was written, so this incident remains eligible for a later retry.</p>', if(greater(length(coalesce(variables('RejectedEntitySummaryLines'), createArray())), 0), concat('<ul><li>', join(variables('RejectedEntitySummaryLines'), '</li><li>'), '</li></ul>'), ''))}"
+                                }
+                              }
+                            },
+                            "Terminate_No_Candidates_Approved": {
+                              "type": "Terminate",
+                              "runAfter": {
+                                "Add_Comment_No_Candidates_Approved": ["Succeeded"]
+                              },
+                              "inputs": {
+                                "runStatus": "Succeeded"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {
+                        "Add_Comment_No_Entities": {
+                          "type": "ApiConnection",
+                          "runAfter": {},
+                          "inputs": {
+                            "host": {
+                              "connection": {
+                                "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                              }
+                            },
+                            "method": "post",
+                            "path": "/Incidents/Comment",
+                            "body": {
+                              "incidentArmId": "@triggerBody()?['object']?['id']",
+                              "message": "<p><strong>Zscaler ASIM Incident Response:</strong> no IP or URL entities were found on this incident. No enrichment, approval request, or block action was performed.</p>"
+                            }
+                          }
+                        },
+                        "Terminate_No_Entities": {
+                          "type": "Terminate",
+                          "runAfter": {
+                            "Add_Comment_No_Entities": ["Succeeded"]
+                          },
+                          "inputs": {
+                            "runStatus": "Succeeded"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "azuresentinel": {
+                "connectionId": "[variables('SentinelConnectionId')]",
+                "connectionName": "[parameters('SentinelConnectionName')]",
+                "id": "[variables('SentinelManagedApiId')]",
+                "connectionProperties": {
+                  "authentication": {
+                    "type": "ManagedServiceIdentity"
+                  }
+                }
+              },
+              "teams": {
+                "connectionId": "[variables('TeamsConnectionId')]",
+                "connectionName": "[parameters('TeamsConnectionName')]",
+                "id": "[variables('TeamsManagedApiId')]"
+              }
+            }
+          },
+          "BlockCategory": {
+            "value": "[parameters('ZscalerBlockCategory')]"
+          },
+          "ApproverUpn": {
+            "value": "[parameters('ApproverUpn')]"
+          },
+          "AsimTimeRangeDays": {
+            "value": "[parameters('AsimTimeRangeDays')]"
+          },
+          "AsimRowLimit": {
+            "value": "[parameters('AsimRowLimit')]"
+          },
+          "LogAnalyticsWorkspaceId": {
+            "value": "[parameters('LogAnalyticsWorkspaceId')]"
+          },
+          "KeyVaultUri": {
+            "value": "[parameters('KeyVaultUri')]"
+          },
+          "ZscalerClientIdSecretName": {
+            "value": "[parameters('ZscalerClientIdSecretName')]"
+          },
+          "ZscalerClientSecretSecretName": {
+            "value": "[parameters('ZscalerClientSecretSecretName')]"
+          },
+          "ZscalerTokenUrlSecretName": {
+            "value": "[parameters('ZscalerTokenUrlSecretName')]"
+          },
+          "ZscalerApiBaseUri": {
+            "value": "[parameters('ZscalerApiBaseUri')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowName": {
+      "type": "string",
+      "value": "[parameters('PlaybookName')]"
+    },
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('PlaybookName'))]"
+    },
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2017-07-01', 'Full').identity.principalId]"
+    },
+    "sentinelConnectionResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/connections', parameters('SentinelConnectionName'))]"
+    },
+    "teamsConnectionResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/connections', parameters('TeamsConnectionName'))]"
+    }
+  }
+}

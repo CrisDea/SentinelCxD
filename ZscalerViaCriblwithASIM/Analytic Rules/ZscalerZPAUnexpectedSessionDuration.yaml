@@ -1,0 +1,78 @@
+id: 5871c1d2-e7be-44a0-a990-59b09a0d618e
+name: ASIM - Zscaler Unexpected ZPA Session Duration (Zscaler ZPA)
+description: |
+  'Detects a Zscaler Private Access (ZPA) session whose duration exceeds an 8-hour threshold. An unusually
+  long-lived session can indicate an attacker maintaining persistent access, or a client that failed to
+  properly close its session.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - Unexpected ZPA session duration"
+  (original id e07846e0-43ad-11ec-81d3-0242ac130003, ZPAEvent table) to use the ASIM Network Session
+  normalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction "open"/"close" values,
+  which have no equivalent in the ASIM enumerated DvcAction values (Allow/Deny/Drop/...), are mapped to
+  EventSubType == "Start" and EventSubType == "End" respectively; ConnectionID in the raw ZPAEvent table is
+  mapped to NetworkSessionId, the standard schema session correlation key; and DstUserName is mapped to
+  SrcUsername, since it identifies the connecting (source) user. Assumes a Cribl Stream pipeline emits ZPA
+  session-open and session-close audit records as two _Im_NetworkSession rows sharing the same
+  NetworkSessionId. If the pipeline instead emits a single row per completed session, the join below can be
+  replaced with a direct filter on the NetworkDuration field.
+  Optimized to invoke the _Im_NetworkSession unifying parser exactly once per execution: it is materialized
+  into a single bounded result set (materialize(), filtered to the 24-hour lookback and the Zscaler ZPA
+  product predicate) and both the open-session and closed-session branches are derived from that
+  materialized set, rather than each querying _Im_NetworkSession directly. Referencing a unifying ASIM
+  parser more than once in the same query causes the engine to re-expand the underlying union of
+  source-specific parsers for every reference, which can exceed the Log Analytics relational operator tree
+  complexity limit (CRT0015). This is a query-plan optimization only; detection intent, thresholds, and
+  entity mappings are unchanged.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+queryFrequency: 1h
+queryPeriod: 24h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1078
+  - T1133
+query: |
+  let dt_lookBack = 24h;
+  let time_treshhold = timespan(08:00:00);
+  // Materialize the ASIM Network Session parser once, bounded to the lookback window and the Zscaler ZPA
+  // product predicate, so the open-session and closed-session branches below reuse the same result set
+  // instead of each triggering a separate expansion of the underlying unifying parser.
+  let NetworkEvents = materialize(
+      _Im_NetworkSession
+      | where TimeGenerated > ago(dt_lookBack)
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  );
+  let open_sessions =
+  NetworkEvents
+  | where EventSubType == "Start"
+  | summarize timestampstart = min(TimeGenerated) by SrcUsername, SrcIpAddr, NetworkSessionId
+  | sort by timestampstart asc;
+  let closed_sessions =
+  NetworkEvents
+  | where EventSubType == "End"
+  | summarize timestampend = max(TimeGenerated) by SrcUsername, SrcIpAddr, NetworkSessionId
+  | sort by timestampend asc;
+  open_sessions
+  | join (closed_sessions) on SrcUsername, SrcIpAddr, NetworkSessionId
+  | extend duration = timestampend - timestampstart
+  | where duration > time_treshhold
+  | where SrcUsername !has "ZPA LSS"
+  | sort by timestampstart asc
+  | extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0
+kind: Scheduled

@@ -1,0 +1,32 @@
+id: 6ae7b9e0-462a-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Applications Used by Accounts (Zscaler ZPA)
+description: |
+  Shows ZPA private applications used by each connecting account. The vendor application
+  label is read from AdditionalFields.Application and falls back to the normalized DstFQDN.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | extend ZPA = todynamic(AdditionalFields)
+  | extend Application = coalesce(tostring(ZPA.Application), DstFQDN)
+  | where isnotempty(Application) and isnotempty(SrcUsername)
+  | summarize EventCount = count() by Application, SrcUsername
+  | order by Application asc, EventCount desc
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+

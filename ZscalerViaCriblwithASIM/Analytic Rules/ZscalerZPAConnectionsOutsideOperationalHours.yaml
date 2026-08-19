@@ -1,0 +1,46 @@
+id: 0948c404-e1d9-4ff7-9edf-58abcfd18b59
+name: ASIM - Zscaler ZPA Connections Outside Operational Hours (Zscaler ZPA)
+description: |
+  'Detects Zscaler Private Access (ZPA) connections established outside the defined operational hours window
+  (08:00-19:00). Connections outside normal business hours can indicate automated tooling, an attacker in a
+  different time zone, or use of a compromised account outside the user''s normal working pattern.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - ZPA connections outside operational hours"
+  (original id 2859ad22-46c8-4cc7-ad7b-80ce0cba0af3, ZPAEvent table) to use the ASIM Network Session
+  normalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == "open" is mapped to
+  DvcAction == "Allow", and DstUserName in the raw ZPAEvent table is mapped to SrcUsername, since it
+  identifies the connecting (source) user. The raw LogTimestamp string field is replaced with the standard
+  EventStartTime datetime field, removing the need to call todatetime() on a raw string. The upstream
+  "between" hour range (19 .. 8) was inverted and always evaluated to an empty range; it has been replaced
+  with the logically equivalent "!between (8 .. 19)" so the rule actually flags connections outside the
+  08:00-19:00 operational window, which is a direct, schema-driven correction to the original threshold
+  logic rather than a change in detection intent.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where DvcAction == "Allow"
+  | where datetime_part("Hour", EventStartTime) !between (8 .. 19)
+  | summarize count() by SrcUsername
+  | project SrcUsername
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+kind: Scheduled

@@ -1,0 +1,143 @@
+{
+  "version": "1.0.0",
+  "rule": "For each canonical field, use the first non-empty source field. Values not consumed by these mappings are retained in AdditionalFields.",
+  "matchSyntax": "A byFamily key ending in * is a prefix match; exact keys take precedence.",
+  "common": {
+    "TimeGenerated": ["TimeGenerated","datetime","eventtime","LogTimestamp","ModifiedTime","CreationTime"],
+    "EventStartTime": ["EventStartTime","TimeGenerated","datetime","eventtime","TimestampConnectionStart","TimestampAuthentication"],
+    "EventEndTime": ["EventEndTime","TimestampConnectionEnd","TimestampUnAuthentication","TimeGenerated"],
+    "EventProduct": ["EventProduct","product"],
+    "EventProductVersion": ["EventProductVersion","version","DeviceVersion"],
+    "EventOriginalUid": ["EventOriginalUid","deviceExternalId","externalId","RequestID","ConnectionID","SessionID","NetworkSessionId"],
+    "EventSeverity": ["EventSeverity","Severity","severity"],
+    "EventOriginalSeverity": ["EventOriginalSeverity","Severity","severity"],
+    "EventMessage": ["EventMessage","Message","_raw"],
+    "EventResultDetails": ["EventResultDetails","outcome","reason","InternalReason","ConnectionStatus"],
+    "SrcIpAddr": ["SrcIpAddr","src","SourceIP","ClientPublicIP","ClientPrivateIP"],
+    "SrcPortNumber": ["SrcPortNumber","spt","SourcePort"],
+    "SrcNatIpAddr": ["SrcNatIpAddr","sourceTranslatedAddress","SourceTranslatedAddress"],
+    "SrcNatPortNumber": ["SrcNatPortNumber","sourceTranslatedPort","SourceTranslatedPort"],
+    "SrcUsername": ["SrcUsername","suser","SourceUserName","Username","User","NameID"],
+    "SrcHostname": ["SrcHostname","shost","SourceHostName","DvcHostname"],
+    "DstIpAddr": ["DstIpAddr","dst","DestinationIP","ServerIP","ConnectorIP"],
+    "DstPortNumber": ["DstPortNumber","dpt","DestinationPort","ServicePort","ServerPort","ApplicationPort"],
+    "DstNatIpAddr": ["DstNatIpAddr","destinationTranslatedAddress","DestinationTranslatedAddress"],
+    "DstNatPortNumber": ["DstNatPortNumber","destinationTranslatedPort","DestinationTranslatedPort"],
+    "DstHostname": ["DstHostname","dhost","DestinationHostName","Host","Server"],
+    "DstFQDN": ["DstFQDN","DstDomainHostname","UrlHostname","Hostname"],
+    "DvcHostname": ["DvcHostname","dvchost","DeviceName","ClientZEN","ZEN"],
+    "DvcIpAddr": ["DvcIpAddr","PrivateIP"],
+    "NetworkProtocol": ["NetworkProtocol","proto","Protocol","IPProtocol"],
+    "NetworkApplicationProtocol": ["NetworkApplicationProtocol","app","ApplicationProtocol"],
+    "SrcBytes": ["SrcBytes","out_bytes","out","SentBytes","ZENTotalBytesRxClient","TotalBytesRx"],
+    "DstBytes": ["DstBytes","in_bytes","inbytes","ReceivedBytes","ZENTotalBytesTxClient","TotalBytesTx"],
+    "NetworkSessionId": ["NetworkSessionId","ConnectionID","SessionID"],
+    "ActorUsername": ["ActorUsername","suser","SourceUserName","ModifiedBy","Username","User"]
+  },
+  "byFamily": {
+    "ZIA_Audit": {
+      "EventType": ["name","Activity"],
+      "Operation": ["act","name","Activity"],
+      "EventResult": ["outcome","EventOutcome"],
+      "Object": ["cs1","cs2","cs3"],
+      "ObjectId": ["deviceExternalId"]
+    },
+    "ZIA_CASB_*": {
+      "EventType": ["act","name","Activity"],
+      "Operation": ["act","name","Activity"],
+      "EventResult": ["outcome","EventOutcome","act"],
+      "TargetFilePath": ["filePath","FilePath","fname","FileName"],
+      "TargetFileName": ["fname","FileName"],
+      "TargetFileExtension": ["fileType","FileType"],
+      "TargetFileSHA256": ["TargetFileSHA256"],
+      "TargetFileSize": ["fsize","FileSize"],
+      "TargetFileModificationTime": ["fileModificationTime","FileModificationTime"],
+      "Object": ["fname","FileName","dhost","DestinationHostName"],
+      "ObjectId": ["fileId","FileID","deviceExternalId"]
+    },
+    "ZIA_DNS": {
+      "EventType": ["EventType"],
+      "EventResult": ["EventResult"],
+      "DnsQuery": ["DnsQuery","cs5","DeviceCustomString5"],
+      "DnsQueryTypeName": ["DnsQueryTypeName","cs4","DeviceCustomString4"],
+      "DnsResponseName": ["DnsResponseName","cs6","DeviceCustomString6"],
+      "DnsResponseCodeName": ["DnsResponseCodeName","cs6","DeviceCustomString6"]
+    },
+    "ZIA_Email_DLP": {
+      "EventType": ["act","Name","Activity"],
+      "Operation": ["act","Name","Activity"],
+      "EventResult": ["outcome","act"],
+      "TargetFilePath": ["fname","FileName"],
+      "TargetFileName": ["fname","FileName"]
+    },
+    "ZIA_Endpoint_DLP": {
+      "EventType": ["act","name","Activity"],
+      "Operation": ["act","name","Activity"],
+      "EventResult": ["outcome","act"],
+      "TargetFilePath": ["filePath","FilePath"],
+      "TargetFileName": ["fname","FileName"],
+      "TargetFileExtension": ["fileType","FileType"],
+      "TargetFileSHA256": ["TargetFileSHA256"]
+    },
+    "ZIA_Firewall": {
+      "EventType": ["EventType"],
+      "EventResult": ["EventResult","act"],
+      "DvcAction": ["DvcAction","act","DeviceAction"],
+      "NetworkDirection": ["deviceDirection","CommunicationDirection"],
+      "NetworkDuration": ["cn1","DeviceCustomNumber1"],
+      "ThreatCategory": ["cs5","DeviceCustomString5"],
+      "ThreatName": ["cs6","DeviceCustomString6"]
+    },
+    "ZIA_Tunnel": {
+      "EventType": ["EventType","name"],
+      "EventResult": ["EventResult","reason"],
+      "DvcAction": ["DvcAction","name"],
+      "NetworkDuration": ["cn1","DeviceCustomNumber1"]
+    },
+    "ZIA_Web": {
+      "EventType": ["EventType"],
+      "EventResult": ["EventResult","outcome"],
+      "DvcAction": ["DvcAction","act","DeviceAction"],
+      "Url": ["Url","request","RequestURL"],
+      "UrlCategory": ["UrlCategory","cs2","DeviceCustomString2"],
+      "HttpRequestMethod": ["HttpRequestMethod","requestMethod","RequestMethod"],
+      "HttpStatusCode": ["HttpStatusCode","outcome","EventOutcome"],
+      "HttpUserAgent": ["HttpUserAgent","requestClientApplication","RequestClientApplication"],
+      "HttpReferrer": ["HttpReferrer","requestContext","RequestContext"],
+      "ThreatName": ["ThreatName","cs5","DeviceCustomString5"],
+      "TargetFileName": ["fname","FileName"],
+      "TargetFileMD5": ["fileHash","FileHash","cs6","DeviceCustomString6"]
+    },
+    "ZPA/Access": {
+      "EventType": ["EventType","ConnectionStatus"],
+      "EventResult": ["EventResult","InternalReason","ConnectionStatus"],
+      "DvcAction": ["DvcAction","ConnectionStatus","SessionStatus"],
+      "TargetAppName": ["Application","AppGroup"],
+      "NetworkDuration": ["NetworkDuration","ConnectionSetupTime"],
+      "DstUsername": ["Username","User"]
+    },
+    "ZPA/Authentication": {
+      "EventType": ["EventType","SessionType"],
+      "EventResult": ["EventResult","SessionStatus","EventResultDetails"],
+      "TargetUsername": ["TargetUsername","NameID","Username","User"],
+      "ActorUsername": ["ActorUsername","NameID","Username","User"],
+      "TargetAppName": ["TargetAppName","Idp","Application"],
+      "AuthenticationProtocol": ["AuthenticationProtocol","Idp"]
+    },
+    "ZPA/Administration": {
+      "EventType": ["EventType","AuditOperationType"],
+      "Operation": ["Operation","AuditOperationType"],
+      "EventResult": ["EventResult","EventResultDetails"],
+      "ActorUsername": ["ActorUsername","ModifiedBy","Username","User"],
+      "Object": ["Object","ObjectName"],
+      "ObjectId": ["ObjectId","ObjectID"],
+      "ObjectType": ["ObjectType"],
+      "OldValue": ["OldValue","AuditOldValue"],
+      "NewValue": ["NewValue","AuditNewValue"]
+    }
+  },
+  "labelDrivenFields": {
+    "pairs": [["cs1Label","cs1"],["cs2Label","cs2"],["cs3Label","cs3"],["cs4Label","cs4"],["cs5Label","cs5"],["cs6Label","cs6"],["cn1Label","cn1"],["cn2Label","cn2"],["cn3Label","cn3"]],
+    "destination": "AdditionalFields"
+  }
+}

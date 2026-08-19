@@ -1,0 +1,23 @@
+ZscalerCribl_CL
+| where not(disabled)
+| where array_index_of(AsimSchemas, 'NetworkSession') >= 0
+| where (isnull(starttime) or TimeGenerated >= starttime) and (isnull(endtime) or TimeGenerated < endtime)
+| where array_length(srcipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(SrcIpAddr, srcipaddr_has_any_prefix)
+| where array_length(dstipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(DstIpAddr, dstipaddr_has_any_prefix)
+| where array_length(ipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(SrcIpAddr, ipaddr_has_any_prefix) or has_any_ipv4_prefix(DstIpAddr, ipaddr_has_any_prefix)
+| where isnull(dstportnumber) or DstPortNumber == dstportnumber
+| where array_length(hostname_has_any) == 0 or SrcHostname has_any (hostname_has_any) or DstHostname has_any (hostname_has_any) or DvcHostname has_any (hostname_has_any)
+| where array_length(dvcaction) == 0 or DvcAction in~ (dvcaction)
+| where eventresult == '*' or EventResult =~ eventresult
+| extend EventSchema='NetworkSession', EventSchemaVersion='0.2.7', EventVendor='Zscaler',
+    AdditionalFields=bag_merge(iff(isnull(AdditionalFields), dynamic({}), AdditionalFields), bag_pack('ZscalerFamily', ZscalerFamily, 'ZscalerSubfamily', ZscalerSubfamily))
+| project TimeGenerated, EventStartTime, EventEndTime, EventSchema, EventSchemaVersion,
+    EventVendor, EventProduct, EventProductVersion, EventType, EventSubType, EventResult, EventResultDetails,
+    EventOriginalResultDetails, EventOriginalType, EventOriginalUid, EventUid, EventCount, EventSeverity,
+    EventOriginalSeverity, EventMessage, RuleName, SrcIpAddr, SrcPortNumber, SrcNatIpAddr,
+    SrcNatPortNumber, SrcUsername, SrcUsernameType, SrcUserId, SrcHostname, SrcGeoCountry, SrcGeoCity,
+    DstIpAddr, DstPortNumber, DstNatIpAddr, DstNatPortNumber, DstUsername, DstUsernameType,
+    DstUserId, DstHostname, DstFQDN, DstGeoCountry, DstGeoCity, DstAppName, DstAppType,
+    DvcHostname, DvcIpAddr, DvcAction, NetworkProtocol, NetworkApplicationProtocol,
+    NetworkDirection, NetworkDuration, NetworkBytes, SrcBytes, DstBytes, NetworkSessionId, NetworkRuleName,
+    ThreatName, ThreatCategory, ThreatRiskLevel, AdditionalFields

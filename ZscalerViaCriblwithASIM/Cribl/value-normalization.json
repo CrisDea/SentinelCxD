@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "matchSyntax": "A fixedByRoute key ending in * is a prefix match; exact keys take precedence.",
+  "fixedByRoute": {
+    "ZIA_Audit": {"EventProduct":"ZIA Audit","EventType":"Audit","EventResult":{"success":["success","allowed"],"failure":["failure","failed","blocked","error"],"default":"NA"}},
+    "ZIA_CASB_*": {"EventProduct":"ZIA CASB","EventType":"Activity","EventResult":{"success":["success","allowed","allow"],"failure":["failure","failed","blocked","deny","denied"],"default":"NA"}},
+    "ZIA_DNS": {"EventProduct":"ZIA DNS","EventType":"Query","EventResult":{"success":["NOERROR","success"],"failure":["NXDOMAIN","SERVFAIL","REFUSED","failure"],"default":"NA"}},
+    "ZIA_Email_DLP": {"EventProduct":"ZIA Email DLP","EventType":"FileActivity","EventResult":{"success":["allowed","allow","success"],"failure":["blocked","block","failure"],"default":"NA"}},
+    "ZIA_Endpoint_DLP": {"EventProduct":"ZIA Endpoint DLP","EventType":"FileActivity","EventResult":{"success":["allowed","allow","success"],"failure":["blocked","block","failure"],"default":"NA"}},
+    "ZIA_Firewall": {"EventProduct":"ZIA Firewall","EventType":"NetworkSession","EventResult":{"success":["allow","allowed"],"failure":["block","blocked","drop","reset","failure"],"default":"NA"}},
+    "ZIA_Tunnel": {"EventProduct":"ZIA Tunnel","EventType":"NetworkSession","EventResult":{"success":["established","connected","success","allow"],"failure":["failed","failure","disconnected","blocked"],"default":"NA"}},
+    "ZIA_Web": {"EventProduct":"ZIA Proxy","EventType":"HTTPsession","EventResult":{"success":["success","allowed","allow","200-399"],"failure":["failure","blocked","deny","400-599"],"default":"NA"}},
+    "ZPA/Access": {"EventProduct":"ZPA Access","EventType":"NetworkSession","EventResult":{"success":["success","allowed","connected","established"],"failure":["failure","blocked","denied","failed"],"default":"NA"}},
+    "ZPA/Authentication": {"EventProduct":"ZPA Authentication","EventType":"Logon","EventResult":{"success":["success","authenticated","allowed"],"failure":["failure","unauthenticated","denied"],"default":"NA"}},
+    "ZPA/Administration": {"EventProduct":"ZPA Administration","EventType":"Audit","EventResult":{"success":["success","completed"],"failure":["failure","failed","error"],"default":"NA"}}
+  },
+  "controlledVocabularies": {
+    "EventResult": ["Success","Failure","Partial","NA"],
+    "EventSeverity": ["Informational","Low","Medium","High"],
+    "NetworkDirection": ["Inbound","Outbound","Local"]
+  },
+  "derived": {
+    "NetworkBytes": "SrcBytes + DstBytes when both are present",
+    "EventEndTime": "EventStartTime when the source has no end time",
+    "EventCount": "1 when the source has no aggregate count"
+  },
+  "reject": [
+    "unmapped family or ZPA subfamily",
+    "invalid datetime or numeric coercion",
+    "missing common required field",
+    "missing schema-specific required field",
+    "AsimSchemas differs from family-mapping.json"
+  ]
+}

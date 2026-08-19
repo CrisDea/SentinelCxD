@@ -1,0 +1,287 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "**ASIM ZPA parity workbook** — Dedicated normalized equivalent of `Solutions/Zscaler Private Access (ZPA)/Workbooks/ZscalerZPA.json` at Azure-Sentinel commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`. Every source-telemetry panel uses `_Im_NetworkSession` and filters Zscaler Private Access events. The upstream alert panel retains its Sentinel-derived `SecurityAlert` semantics with a Zscaler/ZPA filter. Panel order, titles, visualizations, rankings, and time semantics are preserved. See `zpa-workbook-parity.json` for field-level mappings and limitations."
+      },
+      "name": "text - 2"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "b5159ec9-d0a5-42ca-8ba1-f6d883ab823b",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "value": {
+              "durationMs": 2592000000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ]
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - 1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| where DvcAction == 'Allow'\n| where isnotempty(SrcGeoCountry)\n| summarize count() by SrcGeoCountry",
+        "size": 3,
+        "title": "Top Countries",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart",
+        "chartSettings": {
+          "showMetrics": false,
+          "showLegend": true
+        }
+      },
+      "customWidth": "25",
+      "name": "query - 4",
+      "styleSettings": {
+        "maxWidth": "30"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| where isnotempty(DvcAction)\n| summarize count() by DvcAction",
+        "size": 3,
+        "title": "Connection status",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart"
+      },
+      "customWidth": "25",
+      "name": "Connection status",
+      "styleSettings": {
+        "margin": "40",
+        "padding": "40",
+        "maxWidth": "50"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| make-series TotalEvents = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain};",
+        "size": 0,
+        "title": "Events over time",
+        "color": "magenta",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "timechart"
+      },
+      "customWidth": "50",
+      "name": "query - 4"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| where DvcAction == 'Allow'\n| where isnotempty(SrcIpAddr)\n| summarize EventCount = count() by SrcIpAddr\n| top 10 by EventCount desc",
+        "size": 0,
+        "title": "Top Source IP",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart"
+      },
+      "customWidth": "50",
+      "name": "query - 0",
+      "styleSettings": {
+        "maxWidth": "100"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated > ago(7d)\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| where EventSubType == 'End'\n| extend ZPA = todynamic(AdditionalFields)\n| extend CloseReason = coalesce(EventOriginalResultDetails, tostring(ZPA.ConnectionCloseReason))\n| where isnotempty(CloseReason)\n| summarize Reason = count() by CloseReason",
+        "size": 3,
+        "title": "Connection close reasons",
+        "timeContext": {
+          "durationMs": 604800000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "piechart"
+      },
+      "customWidth": "50",
+      "name": "query - 3",
+      "styleSettings": {
+        "maxWidth": "50"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_NetworkSession\n| where TimeGenerated > ago(7d)\n| where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n| where isnotempty(DstFQDN)\n| summarize url = count() by DstFQDN",
+        "size": 2,
+        "title": "Top urlhostname requests",
+        "timeContext": {
+          "durationMs": 604800000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart"
+      },
+      "name": "query - 6"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Base = materialize(\n    _Im_NetworkSession\n    | where TimeGenerated {TimeRange}\n    | where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n    | where isnotempty(SrcUsername)\n);\nBase\n| summarize TrafficVolume = sum(tolong(SrcBytes)) by SrcUsername\n| join kind=inner (\n    Base\n    | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SrcUsername\n) on SrcUsername\n| project User = SrcUsername, ['Traffic(MB)'] = TrafficVolume / 1000000.0, Trend\n| order by ['Traffic(MB)'] asc\n| take 8",
+        "size": 1,
+        "title": "Top VPN Traffic (per user)",
+        "timeContext": {
+          "durationMs": 2592000000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Trend",
+              "formatter": 10,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            }
+          ]
+        },
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "User",
+            "formatter": 1,
+            "formatOptions": {}
+          },
+          "leftContent": {
+            "columnMatch": "Traffic(MB)",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "useGrouping": false,
+                "maximumFractionDigits": 2,
+                "maximumSignificantDigits": 3
+              }
+            }
+          },
+          "secondaryContent": {
+            "columnMatch": "Trend",
+            "formatter": 10,
+            "formatOptions": {
+              "palette": "blue"
+            }
+          },
+          "showBorder": false
+        },
+        "chartSettings": {
+          "group": "User",
+          "createOtherGroup": 0
+        }
+      },
+      "name": "query - 5"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Lookback = 30d;\nlet CurrentWindow = 24h;\nlet Base = materialize(\n    _Im_NetworkSession\n    | where TimeGenerated > ago(Lookback)\n    | where EventVendor =~ 'Zscaler' and EventProduct has 'Private Access'\n);\nlet Baseline = Base\n    | where TimeGenerated between (ago(Lookback) .. ago(CurrentWindow))\n    | where DvcAction == 'Allow'\n    | summarize by SrcUsername, SrcIpAddr;\nlet Current = Base\n    | where TimeGenerated > ago(CurrentWindow)\n    | where isnotempty(SrcUsername) and isnotempty(SrcIpAddr)\n    | summarize EventCount = count() by SrcUsername, SrcIpAddr;\nCurrent\n| join kind=leftanti (Baseline) on SrcUsername, SrcIpAddr\n| extend Message = 'VPN connection from new IP'\n| project User = SrcUsername, SrcIpAddr, Message",
+        "size": 1,
+        "title": "New VPN Users",
+        "timeContext": {
+          "durationMs": 2592000000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "query - 2"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "SecurityAlert\n| where TimeGenerated {TimeRange}\n| where AlertName has 'Zscaler'\n| where AlertName has 'ZPA' or AlertName has 'VPN' or Description has 'Zscaler Private Access'\n| extend Severity = AlertSeverity\n| extend RuleName = AlertName\n| project RuleName, Severity",
+        "size": 0,
+        "title": "Latest Alerts",
+        "timeContext": {
+          "durationMs": 2592000000
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "customWidth": "50",
+      "name": "query - 4"
+    }
+  ],
+  "fromTemplateId": "sentinel-ASIM-ZscalerZPAWorkbook",
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

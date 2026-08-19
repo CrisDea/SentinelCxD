@@ -1,0 +1,152 @@
+{
+  "manifestVersion": "1.0.0",
+  "upstream": {
+    "repository": "Azure/Azure-Sentinel",
+    "commit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+    "solutionPath": "Solutions/Zscaler Internet Access/Playbooks"
+  },
+  "architecture": {
+    "workflowTemplate": "Playbooks/Zscaler-ZIA-Operation/azuredeploy.json",
+    "workflowNameDefault": "Zscaler-ZIA-Operation",
+    "invocationUnit": "one entity per child-workflow invocation",
+    "workflowStateDefault": "Disabled",
+    "mutationKillSwitchDefault": false,
+    "requestTriggerAuthorization": {
+      "sasAuthentication": "Disabled",
+      "policyType": "AAD",
+      "requiredClaims": ["iss", "aud", "oid"],
+      "issuer": "Derived from the deployment subscription tenant as https://sts.windows.net/{tenantId}/",
+      "audienceParameter": "TriggerAudience",
+      "callerObjectIdParameter": "AuthorizedCallerObjectId",
+      "callerObjectIdDefault": "00000000-0000-0000-0000-000000000000",
+      "defaultAuthorizationResult": "No real managed identity is authorized"
+    },
+    "credentials": "Azure Key Vault via system-assigned managed identity",
+    "oauthTokenHandling": "secure HTTP output referenced directly; never stored in a variable or workflow output",
+    "incidentMutationApproval": "one Teams approval card for the exact operation and entity; rejection or timeout performs no Zscaler call",
+    "idempotencyContract": "callers may write a success marker only when a 200 response has safeToWriteIdempotencyMarker=true after successful activation"
+  },
+  "operationCount": 10,
+  "operations": [
+    {
+      "upstreamCapability": "authentication",
+      "upstreamTemplate": "Oauth2Authentication/azuredeploy.json",
+      "operation": "authentication",
+      "entityType": null,
+      "mutating": false,
+      "approvalRequired": false,
+      "implementation": "Key Vault secret reads followed by OAuth2 client_credentials; returns only authenticated=true and tokenExposed=false",
+      "endpoint": "Key Vault secret token URL",
+      "activationRequired": false,
+      "rollbackOperation": null
+    },
+    {
+      "upstreamCapability": "block IP",
+      "upstreamTemplate": "Oauth2BlockIP/azuredeploy.json",
+      "operation": "block-ip",
+      "entityType": "ip",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "PUT IP in dbCategorizedUrls with action=ADD_TO_LIST using IpBlockCategoryId",
+      "endpoint": "UrlCategoryEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "unblock-ip"
+    },
+    {
+      "upstreamCapability": "block URL",
+      "upstreamTemplate": "Oauth2BlockURL/azuredeploy.json",
+      "operation": "block-url",
+      "entityType": "url",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "PUT URL in urls with action=ADD_TO_LIST using UrlBlockCategoryId",
+      "endpoint": "UrlCategoryEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "unblock-url"
+    },
+    {
+      "upstreamCapability": "unblock IP",
+      "upstreamTemplate": "Oauth2UnblockIP/azuredeploy.json",
+      "operation": "unblock-ip",
+      "entityType": "ip",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "PUT IP in dbCategorizedUrls with action=REMOVE_FROM_LIST using IpBlockCategoryId",
+      "endpoint": "UrlCategoryEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "block-ip"
+    },
+    {
+      "upstreamCapability": "unblock URL",
+      "upstreamTemplate": "Oauth2UnblockURL/azuredeploy.json",
+      "operation": "unblock-url",
+      "entityType": "url",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "PUT URL in urls with action=REMOVE_FROM_LIST using UrlBlockCategoryId",
+      "endpoint": "UrlCategoryEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "block-url"
+    },
+    {
+      "upstreamCapability": "lookup IP",
+      "upstreamTemplate": "Oauth2LookupIP/azuredeploy.json",
+      "operation": "lookup-ip",
+      "entityType": "ip",
+      "mutating": false,
+      "approvalRequired": false,
+      "implementation": "POST a one-item IP array to the configured ZIA URL lookup endpoint",
+      "endpoint": "LookupEndpointPath",
+      "activationRequired": false,
+      "rollbackOperation": null
+    },
+    {
+      "upstreamCapability": "lookup URL",
+      "upstreamTemplate": "Oauth2LookupURL/azuredeploy.json",
+      "operation": "lookup-url",
+      "entityType": "url",
+      "mutating": false,
+      "approvalRequired": false,
+      "implementation": "POST a one-item URL array to the configured ZIA URL lookup endpoint",
+      "endpoint": "LookupEndpointPath",
+      "activationRequired": false,
+      "rollbackOperation": null
+    },
+    {
+      "upstreamCapability": "blacklist URL",
+      "upstreamTemplate": "Oauth2BlacklistURL/azuredeploy.json",
+      "operation": "blacklist-url",
+      "entityType": "url",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "GET advanced security, union one URL into blacklistUrls, then PUT the complete advanced security object",
+      "endpoint": "AdvancedSecurityEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "unblacklist-url"
+    },
+    {
+      "upstreamCapability": "unblacklist URL",
+      "upstreamTemplate": "Oauth2UnblacklistURL/azuredeploy.json",
+      "operation": "unblacklist-url",
+      "entityType": "url",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "POST one URL in blacklistUrls with action=REMOVE_FROM_LIST",
+      "endpoint": "BlacklistRemoveEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": "blacklist-url"
+    },
+    {
+      "upstreamCapability": "whitelist URL",
+      "upstreamTemplate": "Oauth2WhitelistURL/azuredeploy.json",
+      "operation": "whitelist-url",
+      "entityType": "url",
+      "mutating": true,
+      "approvalRequired": true,
+      "implementation": "GET security, union one URL into whitelistUrls, then PUT the complete security object",
+      "endpoint": "SecurityEndpointPath",
+      "activationRequired": true,
+      "rollbackOperation": null
+    }
+  ]
+}

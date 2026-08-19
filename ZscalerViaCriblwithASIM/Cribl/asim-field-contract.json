@@ -1,0 +1,72 @@
+{
+  "$schema": "./schemas/asim-field-contract.schema.json",
+  "version": "2.0.0",
+  "vendor": "Zscaler",
+  "physicalTable": "ZscalerCribl_CL",
+  "streamName": "Custom-ZscalerCriblRaw",
+  "routingFields": {
+    "family": "ZscalerFamily",
+    "subfamily": "ZscalerSubfamily",
+    "schemas": "AsimSchemas"
+  },
+  "commonRequired": [
+    "TimeGenerated",
+    "EventStartTime",
+    "EventVendor",
+    "EventProduct",
+    "EventOriginalUid",
+    "ZscalerFamily",
+    "AsimSchemas",
+    "AdditionalFields"
+  ],
+  "schemas": [
+    {
+      "name": "AuditEvent",
+      "builtInParser": "_Im_AuditEvent",
+      "sourceParser": "vimZscalerCriblAuditEvent",
+      "customUnifyingParser": "Im_AuditEventCustom",
+      "required": ["EventType", "EventResult", "Operation", "ActorUsername"],
+      "recommended": ["Object", "ObjectId", "ObjectType", "SrcIpAddr", "NewValue", "OldValue"]
+    },
+    {
+      "name": "Authentication",
+      "builtInParser": "_Im_Authentication",
+      "sourceParser": "vimZscalerCriblAuthentication",
+      "customUnifyingParser": "Im_AuthenticationCustom",
+      "required": ["EventType", "EventResult", "TargetUsername", "SrcIpAddr"],
+      "recommended": ["ActorUsername", "TargetAppName", "LogonMethod", "AuthenticationProtocol", "SrcHostname"]
+    },
+    {
+      "name": "Dns",
+      "builtInParser": "_Im_Dns",
+      "sourceParser": "vimZscalerCriblDns",
+      "customUnifyingParser": "Im_DnsCustom",
+      "required": ["EventType", "EventResult", "SrcIpAddr", "DnsQuery"],
+      "recommended": ["DnsQueryTypeName", "DnsResponseCodeName", "DnsResponseName", "DstIpAddr"]
+    },
+    {
+      "name": "FileEvent",
+      "builtInParser": "_Im_FileEvent",
+      "sourceParser": "vimZscalerCriblFileEvent",
+      "customUnifyingParser": "Im_FileEventCustom",
+      "required": ["EventType", "EventResult", "ActorUsername", "TargetFilePath"],
+      "recommended": ["SrcIpAddr", "TargetFileName", "TargetFileSHA256", "TargetFileSize", "ThreatName"]
+    },
+    {
+      "name": "NetworkSession",
+      "builtInParser": "_Im_NetworkSession",
+      "sourceParser": "vimZscalerCriblNetworkSession",
+      "customUnifyingParser": "Im_NetworkSessionCustom",
+      "required": ["EventType", "EventResult", "SrcIpAddr", "DstIpAddr"],
+      "recommended": ["DstPortNumber", "NetworkProtocol", "DvcAction", "NetworkBytes", "NetworkSessionId"]
+    },
+    {
+      "name": "WebSession",
+      "builtInParser": "_Im_WebSession",
+      "sourceParser": "vimZscalerCriblWebSession",
+      "customUnifyingParser": "Im_WebSessionCustom",
+      "required": ["EventType", "EventResult", "SrcIpAddr", "Url"],
+      "recommended": ["DstIpAddr", "DstFQDN", "HttpRequestMethod", "HttpStatusCode", "HttpUserAgent", "UrlCategory"]
+    }
+  ]
+}

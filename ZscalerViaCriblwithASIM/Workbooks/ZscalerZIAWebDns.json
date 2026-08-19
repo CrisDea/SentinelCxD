@@ -1,0 +1,323 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler ZIA Web and DNS Activity\n\nWeb proxy and DNS activity for Zscaler Internet Access (ZIA), normalized through ASIM. Web panels query `_Im_WebSession`; DNS panels query `_Im_Dns`. All queries filter on `EventVendor == 'Zscaler'` and use only standard ASIM fields."
+      },
+      "name": "intro"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "2d509f48-74de-4428-acf4-4f77e668c3fb",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            }
+          },
+          {
+            "id": "55cf12cb-7e04-4ca5-945f-c4e27ab5c1b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id, name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Web Proxy Activity (_Im_WebSession)"
+      },
+      "name": "web-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let base = _Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler';\nunion isfuzzy=true\n    (base | summarize Count=count() | extend Metric='Total Requests'),\n    (base | where EventResult == 'Failure' | summarize Count=count() | extend Metric='Blocked Requests'),\n    (base | summarize Count=dcount(SrcUsername) | extend Metric='Unique Users'),\n    (base | summarize Count=dcount(Url) | extend Metric='Unique Domains'),\n    (base | summarize Count=sum(NetworkBytes) | extend Metric='Total Bytes')\n| project Metric, Count\n",
+        "size": 3,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Metric",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "web-kpi"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| summarize EventCount=count() by EventResult, bin(TimeGenerated, 1h)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart"
+      },
+      "name": "web-trend"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(Url)\n| summarize RequestCount=count(), BlockedCount=countif(EventResult == 'Failure') by Url\n| top 10 by RequestCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "web-top-domains"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventResult == 'Failure'\n| where isnotempty(ThreatCategory)\n| summarize BlockedCount=count() by ThreatCategory\n| top 10 by BlockedCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "web-top-categories"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(SrcUsername)\n| summarize RequestCount=count(), BlockedCount=countif(EventResult == 'Failure') by SrcUsername\n| top 10 by RequestCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "web-top-users"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(SrcIpAddr)\n| summarize RequestCount=count() by SrcIpAddr\n| top 10 by RequestCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "web-top-srcip"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| extend HttpStatusCode=coalesce(tostring(column_ifexists('HttpStatusCode','')),tostring(column_ifexists('HttpStatusCode_string','')),tostring(column_ifexists('HttpStatusCode_int',int(null))),tostring(AdditionalFields['HttpStatusCode']))\n| where isnotempty(HttpStatusCode)\n| summarize RequestCount=count() by HttpStatusCode\n| top 10 by RequestCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "piechart"
+      },
+      "name": "web-status-pie"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_WebSession\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(HttpUserAgent)\n| summarize RequestCount=count() by HttpUserAgent\n| top 10 by RequestCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "web-top-useragents"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## DNS Activity (_Im_Dns)"
+      },
+      "name": "dns-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let base = _Im_Dns\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler';\nunion isfuzzy=true\n    (base | summarize Count=count() | extend Metric='Total DNS Queries'),\n    (base | where EventResult == 'Failure' | summarize Count=count() | extend Metric='Failed Queries'),\n    (base | summarize Count=dcount(DnsQuery) | extend Metric='Unique Domains Queried'),\n    (base | summarize Count=dcount(SrcIpAddr) | extend Metric='Unique Clients')\n| project Metric, Count\n",
+        "size": 3,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Metric",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "dns-kpi"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_Dns\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| summarize EventCount=count() by EventResult, bin(TimeGenerated, 1h)\n| order by TimeGenerated asc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "timechart"
+      },
+      "name": "dns-trend"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_Dns\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(DnsQuery)\n| summarize QueryCount=count() by DnsQuery\n| top 10 by QueryCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "dns-top-domains"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_Dns\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where isnotempty(DnsQueryType)\n| summarize QueryCount=count() by DnsQueryTypeName\n| top 10 by QueryCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "dns-top-types"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_Dns\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventResult == 'Failure'\n| where isnotempty(SrcIpAddr)\n| summarize FailedCount=count() by SrcIpAddr\n| top 10 by FailedCount desc\n",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table"
+      },
+      "name": "dns-failed-clients"
+    }
+  ],
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

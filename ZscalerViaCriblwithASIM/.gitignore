@@ -1,0 +1,11 @@
+# Local deployment values and generated validation output
+infra/main.parameters.json
+infra/main.json
+*.local.json
+validation-output/
+
+# Tool caches
+.DS_Store
+Thumbs.db
+node_modules/
+__pycache__/

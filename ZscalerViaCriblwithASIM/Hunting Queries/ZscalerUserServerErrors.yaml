@@ -1,0 +1,32 @@
+id: 22545900-422d-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Server Error by User (Zscaler ZPA)
+description: |
+  Shows Zscaler Private Access server-open errors by connecting user. The upstream raw
+  DstUserName is represented by ASIM SrcUsername, and the vendor result detail is expected
+  in EventOriginalResultDetails while EventResult carries the normalized Failure value.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where EventResult == "Failure"
+  | where EventOriginalResultDetails has "AST_MT_SETUP_ERR_OPEN_SERVER_ERROR"
+  | summarize ServerErrorCount = count() by SrcUsername
+  | top 20 by ServerErrorCount desc
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+

@@ -1,0 +1,141 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Zscaler EMAIL DLP overview — ASIM parity\n\nNormalized Zscaler Internet Access telemetry delivered exclusively through Cribl. Lineage: `Azure/Azure-Sentinel` commit `cd455a8cecf3e5e983f9cd08191dca3d211c9fa1`, `Solutions/Zscaler Internet Access/Workbooks/NSSEmailDLPLogs.json`. Vendor-specific values are read from documented `AdditionalFields` keys; select a time range and workspace below."
+      },
+      "name": "zia-email-dlp-lineage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "594582e4-9b13-5777-97df-c50e4f895354",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "62e20b8a-b23c-59a3-9b63-7d46c4e2e74d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspaces",
+            "label": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id,name",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "zia-email-dlp-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSEmaildlplog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId']))\n| where EventClassId =~ 'DLP Incident'\n| extend RuleLabel=coalesce(tostring(AdditionalFields['DlpRule']),'Unknown rule')\n| summarize Incidents=count() by bin(TimeGenerated,1h), RuleLabel\n| order by TimeGenerated asc\n",
+        "size": 1,
+        "title": "DLP incidents over time by DLP rule (trend chart)",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "timechart",
+        "chartSettings": {
+          "xAxis": "TimeGenerated",
+          "yAxis": [
+            "Incidents"
+          ]
+        },
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-email-dlp-panel-01-8a4b4650"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSEmaildlplog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId']))\n| where EventClassId =~ 'DLP Incident'\n| summarize TotalIncidents=count() by SourceUserName=ActorUsername\n| top 10 by TotalIncidents desc\n",
+        "size": 0,
+        "title": "Top senders generating DLP incidents",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "queryType": 0
+      },
+      "name": "zia-email-dlp-panel-02-73a82fb6"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_Im_FileEvent\n| where TimeGenerated {TimeRange}\n| where EventVendor =~ 'Zscaler'\n| where EventProduct has 'ZIA'\n| where tostring(AdditionalFields['LogType']) =~ 'NSSEmaildlplog'\n| extend EventClassId=coalesce(EventOriginalType,tostring(AdditionalFields['EventClassId']))\n| where EventClassId =~ 'DLP Incident'\n| extend DlpDictionary=coalesce(tostring(AdditionalFields['DlpDictionary']),'Unknown dictionary'), FileType=coalesce(TargetFileExtension,tostring(AdditionalFields['AttachmentFileType']),'Unknown')\n| summarize Incidents=count() by DlpDictionary,FileType\n| order by Incidents desc\n",
+        "size": 0,
+        "title": "DLP incidents by dictionary/policy and attachment file type",
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "timeContextFromParameter": "TimeRange",
+        "crossComponentResources": [
+          "{Workspaces}"
+        ],
+        "visualization": "table",
+        "queryType": 0
+      },
+      "name": "zia-email-dlp-panel-03-9abbb7e8"
+    }
+  ],
+  "fromTemplateId": "sentinel-ZIA-ASIM-email-dlp",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

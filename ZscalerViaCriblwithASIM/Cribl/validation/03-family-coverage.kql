@@ -1,0 +1,47 @@
+let lookback = 7d;
+let Expected = datatable(Family:string, Subfamily:string, Schema:string, ExpectedRoute:bool)
+[
+  'ZIA_Audit','','AuditEvent',true,
+  'ZIA_CASB_Activity','','AuditEvent',true,
+  'ZIA_CASB_CRM','','AuditEvent',true,
+  'ZIA_CASB_CloudStorage','','FileEvent',true,
+  'ZIA_CASB_CloudStorage','','AuditEvent',true,
+  'ZIA_CASB_Collaboration','','AuditEvent',true,
+  'ZIA_CASB_Email','','FileEvent',true,
+  'ZIA_CASB_Email','','AuditEvent',true,
+  'ZIA_CASB_FileSharing','','FileEvent',true,
+  'ZIA_CASB_FileSharing','','AuditEvent',true,
+  'ZIA_CASB_ITSM','','AuditEvent',true,
+  'ZIA_CASB_Repository','','FileEvent',true,
+  'ZIA_CASB_Repository','','AuditEvent',true,
+  'ZIA_DNS','','Dns',true,
+  'ZIA_Email_DLP','','FileEvent',true,
+  'ZIA_Email_DLP','','AuditEvent',true,
+  'ZIA_Endpoint_DLP','','FileEvent',true,
+  'ZIA_Endpoint_DLP','','AuditEvent',true,
+  'ZIA_Firewall','','NetworkSession',true,
+  'ZIA_Tunnel','','NetworkSession',true,
+  'ZIA_Web','','WebSession',true,
+  'ZPA','Access','NetworkSession',true,
+  'ZPA','Authentication','Authentication',true,
+  'ZPA','Administration','AuditEvent',true
+];
+let Actual = union
+  (_Im_AuditEvent(starttime=ago(lookback)) | extend Schema='AuditEvent'),
+  (_Im_Authentication(starttime=ago(lookback)) | extend Schema='Authentication'),
+  (_Im_Dns(starttime=ago(lookback)) | extend Schema='Dns'),
+  (_Im_FileEvent(starttime=ago(lookback)) | extend Schema='FileEvent'),
+  (_Im_NetworkSession(starttime=ago(lookback)) | extend Schema='NetworkSession'),
+  (_Im_WebSession(starttime=ago(lookback)) | extend Schema='WebSession')
+| where EventVendor == 'Zscaler'
+| extend Family=tostring(AdditionalFields.ZscalerFamily),
+    Subfamily=tostring(AdditionalFields.ZscalerSubfamily)
+| summarize Events=count() by Family, Subfamily, Schema
+| extend ActualRoute=true;
+Expected
+| join kind=fullouter Actual on Family, Subfamily, Schema
+| extend Family=coalesce(Family, Family1), Subfamily=coalesce(Subfamily, Subfamily1),
+    Schema=coalesce(Schema, Schema1),
+    Status=case(isnull(ActualRoute), 'Missing', isnull(ExpectedRoute), 'Unexpected', 'Expected')
+| project Family, Subfamily, Schema, Events=coalesce(Events, 0), Status
+| order by Status desc, Family asc, Subfamily asc, Schema asc

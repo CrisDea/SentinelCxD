@@ -1,0 +1,28 @@
+id: d311eb1e-4231-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Rare URL Hostname Requests (Zscaler ZPA)
+description: |
+  Shows the 20 least frequently observed ZPA destination hostnames.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where isnotempty(DstFQDN)
+  | summarize RequestCount = count() by DstFQDN
+  | top 20 by RequestCount asc
+  | extend UrlCustomEntity = DstFQDN
+entityMappings:
+  - entityType: URL
+    fieldMappings:
+      - identifier: Url
+        columnName: UrlCustomEntity
+version: 1.0.0

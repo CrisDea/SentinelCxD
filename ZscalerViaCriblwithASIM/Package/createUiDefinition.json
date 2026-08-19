@@ -1,0 +1,164 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "basics": [
+      {
+        "name": "workspaceName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Microsoft Sentinel workspace name",
+        "defaultValue": "",
+        "toolTip": "Name of the existing Log Analytics workspace onboarded to Microsoft Sentinel.",
+        "constraints": {
+          "required": true,
+          "regex": "^[A-Za-z0-9][A-Za-z0-9-]{2,61}[A-Za-z0-9]$",
+          "validationMessage": "Enter a valid existing Log Analytics workspace name."
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "ingestion",
+        "label": "Cribl ingestion and ASIM",
+        "subLabel": {
+          "preValidation": "Configure the portable Cribl Logs Ingestion landing zone.",
+          "postValidation": "ASIM parser functions are always deployed."
+        },
+        "bladeTitle": "Cribl ingestion and ASIM",
+        "elements": [
+          {
+            "name": "createIngestionLandingZone",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Create the ZscalerCribl_CL table, DCE, and DCR",
+            "defaultValue": true,
+            "toolTip": "Clear only when an existing compatible Cribl route already writes the documented canonical table."
+          },
+          {
+            "name": "criblTableRetentionInDays",
+            "type": "Microsoft.Common.DropDown",
+            "label": "Canonical table retention",
+            "defaultValue": 90,
+            "toolTip": "Analytics retention for normalized Zscaler records.",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "30 days",
+                  "value": 30
+                },
+                {
+                  "label": "90 days",
+                  "value": 90
+                },
+                {
+                  "label": "180 days",
+                  "value": 180
+                },
+                {
+                  "label": "365 days",
+                  "value": 365
+                }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "criblPrincipalObjectId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Cribl workload identity object ID (optional)",
+            "defaultValue": "",
+            "toolTip": "When supplied, the deployment assigns Monitoring Metrics Publisher on the DCR."
+          },
+          {
+            "name": "criblPublicNetworkAccess",
+            "type": "Microsoft.Common.DropDown",
+            "label": "DCE public network access",
+            "defaultValue": "Enabled",
+            "toolTip": "Disable only when Azure Monitor Private Link and Cribl private connectivity are ready.",
+            "constraints": {
+              "allowedValues": [
+                {
+                  "label": "Enabled",
+                  "value": "Enabled"
+                },
+                {
+                  "label": "Disabled",
+                  "value": "Disabled"
+                }
+              ],
+              "required": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "automation",
+        "label": "Response automation",
+        "subLabel": {
+          "preValidation": "Configure disabled-by-default response resources.",
+          "postValidation": "Response resources will require secure post-deployment setup."
+        },
+        "bladeTitle": "Response automation",
+        "elements": [
+          {
+            "name": "approverUpn",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Teams approver UPN",
+            "defaultValue": "",
+            "toolTip": "Analyst who receives the adaptive-card approval request.",
+            "constraints": {
+              "required": true,
+              "regex": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+              "validationMessage": "Enter a valid user principal name."
+            }
+          },
+          {
+            "name": "sentinelAutomationPrincipalId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Microsoft Sentinel service principal object ID",
+            "defaultValue": "",
+            "toolTip": "Tenant object ID for the Microsoft Sentinel service principal that invokes playbooks.",
+            "constraints": {
+              "required": true,
+              "regex": "^[0-9a-fA-F-]{36}$",
+              "validationMessage": "Enter a valid object ID."
+            }
+          },
+          {
+            "name": "zscalerBlockCategory",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Zscaler block category",
+            "defaultValue": "OTHER_MISCELLANEOUS",
+            "toolTip": "Existing ZIA category used for approved URL and IP blocks.",
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "analyticsRulesEnabled",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Enable the analytic rules after deployment",
+            "defaultValue": true,
+            "toolTip": "Rules can be enabled before data arrives because they query ASIM unifying parsers."
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "workspaceName": "[basics('workspaceName')]",
+      "location": "[location()]",
+      "createIngestionLandingZone": "[steps('ingestion').createIngestionLandingZone]",
+      "criblTableRetentionInDays": "[steps('ingestion').criblTableRetentionInDays]",
+      "criblPrincipalObjectId": "[steps('ingestion').criblPrincipalObjectId]",
+      "criblPublicNetworkAccess": "[steps('ingestion').criblPublicNetworkAccess]",
+      "approverUpn": "[steps('automation').approverUpn]",
+      "sentinelAutomationPrincipalId": "[steps('automation').sentinelAutomationPrincipalId]",
+      "zscalerBlockCategory": "[steps('automation').zscalerBlockCategory]",
+      "analyticsRulesEnabled": "[steps('automation').analyticsRulesEnabled]",
+      "workflowState": "Disabled",
+      "operationWorkflowState": "Disabled",
+      "enableZiaMutatingOperations": false,
+      "automationRuleEnabled": false
+    }
+  }
+}

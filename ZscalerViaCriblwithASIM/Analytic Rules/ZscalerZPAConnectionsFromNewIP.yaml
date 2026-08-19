@@ -1,0 +1,91 @@
+id: ff199d91-a72c-416c-b06f-b730c87263cb
+name: ASIM - Zscaler ZPA Connections from New IP (Zscaler ZPA)
+description: |
+  'Detects Zscaler Private Access (ZPA) connections from a source IP address that has not been observed for
+  the connecting user during the preceding ~14-day baseline window. A first-seen source IP address for a
+  user can indicate a new device, use of a VPN or proxy, or account compromise.
+  Adapted from the upstream Zscaler Private Access rule "Zscaler - ZPA connections from new IP"
+  (original id 24f0779d-3927-403a-aac1-cc8791653606, ZPAEvent table) to use the ASIM Network Session
+  normalized schema (_Im_NetworkSession) instead of the raw ZPAEvent table. DvcAction == "open" is mapped to
+  DvcAction == "Allow" for the baseline, and DstUserName in the raw ZPAEvent table is mapped to SrcUsername,
+  since it identifies the connecting (source) user. As in the upstream rule, the current-window query is not
+  filtered to DvcAction == "Allow", so both permitted and denied sessions are evaluated for new-IP activity.
+  Optimized to invoke the _Im_NetworkSession unifying parser exactly once per execution: it is materialized
+  into a single bounded result set (materialize(), filtered to the 14-day lookback and the Zscaler ZPA
+  product predicate), and the baseline and current branches are both derived from that materialized set,
+  preserving the original asymmetric DvcAction filtering while avoiding a second parser expansion.
+  Referencing a unifying ASIM parser more than once in the same query causes the engine to re-expand the
+  underlying union of source-specific parsers for every reference, which can exceed the Log Analytics
+  relational operator tree complexity limit (CRT0015).
+  Correctness fix (security review): the query previously (1) derived listIPs from the same full 14-day
+  dataset that the detection branch also scanned, so an IP seen for a user in the current window was, by
+  construction, already part of that same 14-day set; and (2) projected away the SrcUsername grouping column
+  after make_set(), so "SrcIpAddr !in (listIPs)" compared against a single flattened list of every user's IPs
+  combined, rather than checking only the current row's own user - a user could be masked from detection by
+  a completely different user having connected from that IP address. The query now splits the materialized
+  result set into two non-overlapping time slices - baseline = TimeGenerated between (ago(14d) .. ago(1h))
+  (approximately the preceding 14 days, ending where the current slice begins, and restricted to
+  DvcAction == "Allow" as before) and current = TimeGenerated > ago(1h) (the most recent hour, matching
+  queryFrequency, unfiltered on DvcAction as before) - both of which fit inside the existing 14-day
+  queryPeriod, so no schedule change was required. A leftanti join keyed on (SrcUsername, SrcIpAddr) returns
+  only (user, IP) pairs present in the current slice with no matching pair in the baseline slice, so an IP
+  address is only flagged as new for the specific user who connected from it, and a different user's history
+  can no longer suppress the detection. Detection intent, severity, thresholds, and entity mappings are
+  unchanged; the baseline window is now bounded to (ago(14d) .. ago(1h)) instead of a full 14 days, a
+  difference of one hour that is immaterial to the "not seen in the last 14 days" detection intent.'
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+queryFrequency: 1h
+queryPeriod: 14d
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1078
+  - T1133
+query: |
+  let dt_lookback = 14d;
+  let dt_current = 1h;
+  // Materialize the ASIM Network Session parser once, bounded to the lookback window and the Zscaler ZPA
+  // product predicate, so the baseline and current branches below reuse the same result set instead of each
+  // triggering a separate expansion of the underlying unifying parser.
+  let NetworkEvents = materialize(
+      _Im_NetworkSession
+      | where TimeGenerated > ago(dt_lookback)
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  );
+  // Baseline: distinct (user, IP) pairs allowed during the ~14-day window preceding the current slice.
+  let baseline =
+  NetworkEvents
+  | where TimeGenerated between (ago(dt_lookback) .. ago(dt_current))
+  | where DvcAction == "Allow"
+  | summarize by SrcUsername, SrcIpAddr;
+  // Current: distinct (user, IP) pairs seen in the most recent hour (matches queryFrequency, not filtered
+  // on DvcAction as in the upstream rule), so baseline and current never overlap.
+  let current =
+  NetworkEvents
+  | where TimeGenerated > ago(dt_current)
+  | where isnotempty(SrcIpAddr)
+  | summarize by SrcUsername, SrcIpAddr;
+  // A (user, IP) pair in the current slice with no matching pair in the baseline slice is new for that
+  // specific user; keying the leftanti join on both SrcUsername and SrcIpAddr ensures a different user's
+  // history from that IP address cannot suppress this detection.
+  current
+  | join kind=leftanti (baseline) on SrcUsername, SrcIpAddr
+  | extend IPCustomEntity = SrcIpAddr, AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0
+kind: Scheduled

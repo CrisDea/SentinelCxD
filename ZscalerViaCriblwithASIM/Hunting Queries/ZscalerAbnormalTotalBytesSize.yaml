@@ -1,0 +1,37 @@
+id: 181dc982-4631-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Abnormal Total Bytes Size (Zscaler ZPA)
+description: |
+  Shows ZPA sessions whose normalized network byte volume is more than 1000 times the
+  average volume in the caller-selected hunting time range. The upstream
+  ZENTotalBytesRxConnector value is represented by the standard ASIM NetworkBytes field.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - Exfiltration
+  - Collection
+relevantTechniques:
+  - T1530
+  - T1537
+query: |
+  let NetworkEvents = materialize(
+      _Im_NetworkSession
+      | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+      | where isnotnull(NetworkBytes)
+  );
+  let AverageNetworkBytes = toscalar(NetworkEvents | summarize avg(todouble(NetworkBytes)));
+  NetworkEvents
+  | where todouble(NetworkBytes) > 1000.0 * AverageNetworkBytes
+  | extend ThresholdBytes = 1000.0 * AverageNetworkBytes
+  | project TimeGenerated, SrcUsername, SrcIpAddr, DstFQDN, DstIpAddr, NetworkBytes, ThresholdBytes
+  | extend AccountCustomEntity = SrcUsername
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountCustomEntity
+version: 1.0.0
+

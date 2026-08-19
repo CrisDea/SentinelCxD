@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "upstream": {
+    "repository": "Azure/Azure-Sentinel",
+    "commit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1"
+  },
+  "ziaFamilies": [
+    {"id":"CloudNSSAuditLogs","canonicalFamily":"ZIA_Audit","schemas":["AuditEvent"]},
+    {"id":"CloudNSSCASBActivityLogs","canonicalFamily":"ZIA_CASB_Activity","schemas":["AuditEvent"]},
+    {"id":"CloudNSSCASBCRMLogs","canonicalFamily":"ZIA_CASB_CRM","schemas":["AuditEvent"]},
+    {"id":"CloudNSSCASBCloudStorageLogs","canonicalFamily":"ZIA_CASB_CloudStorage","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSCASBCollabLogs","canonicalFamily":"ZIA_CASB_Collaboration","schemas":["AuditEvent"]},
+    {"id":"CloudNSSCASBEmailLogs","canonicalFamily":"ZIA_CASB_Email","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSCASBFileSharingLogs","canonicalFamily":"ZIA_CASB_FileSharing","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSCASBITSMLogs","canonicalFamily":"ZIA_CASB_ITSM","schemas":["AuditEvent"]},
+    {"id":"CloudNSSCASBRepoLogs","canonicalFamily":"ZIA_CASB_Repository","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSDNSLogs","canonicalFamily":"ZIA_DNS","schemas":["Dns"]},
+    {"id":"CloudNSSEmailDLPLogs","canonicalFamily":"ZIA_Email_DLP","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSEndpointDLPLogs","canonicalFamily":"ZIA_Endpoint_DLP","schemas":["FileEvent","AuditEvent"]},
+    {"id":"CloudNSSFWLogs","canonicalFamily":"ZIA_Firewall","schemas":["NetworkSession"]},
+    {"id":"CloudNSSTunnelLogs","canonicalFamily":"ZIA_Tunnel","schemas":["NetworkSession"]},
+    {"id":"CloudNSSWebLogs","canonicalFamily":"ZIA_Web","schemas":["WebSession"]}
+  ],
+  "zpa": {
+    "id": "ZPA",
+    "canonicalFamily": "ZPA",
+    "subfamilies": [
+      {"id":"access","canonicalSubfamily":"Access","schemas":["NetworkSession"]},
+      {"id":"authentication","canonicalSubfamily":"Authentication","schemas":["Authentication"]},
+      {"id":"administration","canonicalSubfamily":"Administration","schemas":["AuditEvent"]}
+    ]
+  }
+}

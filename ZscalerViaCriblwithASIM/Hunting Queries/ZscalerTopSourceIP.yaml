@@ -1,0 +1,31 @@
+id: baf67720-4623-11ec-81d3-0242ac130003
+name: ASIM - Zscaler Top Source IP (Zscaler ZPA)
+description: |
+  Shows the 20 source IP addresses with the most allowed ZPA access sessions. The upstream
+  raw open action is represented by the normalized ASIM Allow action.
+severity: Low
+status: Available
+requiredDataConnectors:
+  - connectorId: ASimNetworkSession
+    dataTypes:
+      - _Im_NetworkSession
+tactics:
+  - InitialAccess
+relevantTechniques:
+  - T1190
+  - T1133
+query: |
+  _Im_NetworkSession
+  | where EventVendor =~ "Zscaler" and EventProduct has "Private Access"
+  | where DvcAction == "Allow"
+  | where isnotempty(SrcIpAddr)
+  | summarize EventCount = count() by SrcIpAddr
+  | top 20 by EventCount desc
+  | extend IPCustomEntity = SrcIpAddr
+entityMappings:
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPCustomEntity
+version: 1.0.0
+

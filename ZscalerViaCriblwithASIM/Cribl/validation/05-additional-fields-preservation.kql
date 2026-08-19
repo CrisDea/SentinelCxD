@@ -1,0 +1,25 @@
+let lookback = 7d;
+let Source = ZscalerCribl_CL
+| where TimeGenerated >= ago(lookback) and array_length(bag_keys(AdditionalFields)) > 0
+| mv-expand Schema=AsimSchemas to typeof(string)
+| project EventOriginalUid, Schema, SourceAdditionalFields=AdditionalFields;
+let Parsed = union
+  (_Im_AuditEvent(starttime=ago(lookback)) | extend Schema='AuditEvent'),
+  (_Im_Authentication(starttime=ago(lookback)) | extend Schema='Authentication'),
+  (_Im_Dns(starttime=ago(lookback)) | extend Schema='Dns'),
+  (_Im_FileEvent(starttime=ago(lookback)) | extend Schema='FileEvent'),
+  (_Im_NetworkSession(starttime=ago(lookback)) | extend Schema='NetworkSession'),
+  (_Im_WebSession(starttime=ago(lookback)) | extend Schema='WebSession')
+| where EventVendor == 'Zscaler'
+| project EventOriginalUid, Schema, ParsedAdditionalFields=AdditionalFields;
+Source
+| join kind=leftouter Parsed on EventOriginalUid, Schema
+| mv-expand FieldName=bag_keys(SourceAdditionalFields) to typeof(string)
+| extend SourceValue=tostring(SourceAdditionalFields[FieldName]),
+    ParsedValue=tostring(ParsedAdditionalFields[FieldName])
+| summarize SourceFields=count(), PreservedFields=countif(SourceValue == ParsedValue),
+    MissingOrChangedFields=countif(SourceValue != ParsedValue or isnull(ParsedAdditionalFields))
+    by Schema
+| extend PreservationPercent=iff(SourceFields == 0, real(null),
+    round(100.0 * PreservedFields / SourceFields, 2))
+| order by Schema asc

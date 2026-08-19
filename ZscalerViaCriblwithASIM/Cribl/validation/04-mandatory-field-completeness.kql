@@ -1,0 +1,36 @@
+let lookback = 7d;
+union
+  (_Im_AuditEvent(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='AuditEvent', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(Operation) and isnotempty(ActorUsername)),
+  (_Im_Authentication(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='Authentication', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(TargetUsername) and isnotempty(SrcIpAddr)),
+  (_Im_Dns(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='Dns', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(SrcIpAddr) and isnotempty(DnsQuery)),
+  (_Im_FileEvent(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='FileEvent', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(ActorUsername) and isnotempty(TargetFilePath)),
+  (_Im_NetworkSession(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='NetworkSession', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(SrcIpAddr) and isnotempty(DstIpAddr)),
+  (_Im_WebSession(starttime=ago(lookback))
+    | where EventVendor == 'Zscaler'
+    | extend Schema='WebSession', RequiredComplete=isnotempty(EventOriginalUid) and
+        isnotnull(EventStartTime) and isnotempty(EventType) and isnotempty(EventResult) and
+        isnotempty(SrcIpAddr) and isnotempty(Url))
+| summarize Events=count(), Complete=countif(RequiredComplete),
+    Incomplete=countif(not(RequiredComplete)) by Schema
+| extend CompletenessPercent=iff(Events == 0, real(null), round(100.0 * Complete / Events, 2))
+| order by Schema asc

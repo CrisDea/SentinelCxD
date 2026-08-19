@@ -1,0 +1,416 @@
+{
+  "schemaVersion": "1.0.0",
+  "contentType": "Microsoft Sentinel Hunting Queries",
+  "upstream": {
+    "repository": "Azure/Azure-Sentinel",
+    "commit": "cd455a8cecf3e5e983f9cd08191dca3d211c9fa1",
+    "path": "Solutions/Zscaler Private Access (ZPA)/Hunting Queries",
+    "expectedCount": 10
+  },
+  "parserDependencies": [
+    "_Im_NetworkSession"
+  ],
+  "vendorPredicate": "EventVendor =~ \"Zscaler\"",
+  "productPredicate": "EventProduct has \"Private Access\"",
+  "queries": [
+    {
+      "id": "181dc982-4631-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Abnormal Total Bytes Size (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Abnormal Total Bytes Size (Zscaler ZPA)",
+      "description": "Shows ZPA sessions whose normalized network byte volume is more than 1000 times the\naverage volume in the caller-selected hunting time range. The upstream\nZENTotalBytesRxConnector value is represented by the standard ASIM NetworkBytes field.\n",
+      "category": "Hunting Queries",
+      "query": "let NetworkEvents = materialize(\n    _Im_NetworkSession\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n    | where isnotnull(NetworkBytes)\n);\nlet AverageNetworkBytes = toscalar(NetworkEvents | summarize avg(todouble(NetworkBytes)));\nNetworkEvents\n| where todouble(NetworkBytes) > 1000.0 * AverageNetworkBytes\n| extend ThresholdBytes = 1000.0 * AverageNetworkBytes\n| project TimeGenerated, SrcUsername, SrcIpAddr, DstFQDN, DstIpAddr, NetworkBytes, ThresholdBytes\n| extend AccountCustomEntity = SrcUsername\n",
+      "tactics": [
+        "Exfiltration",
+        "Collection"
+      ],
+      "techniques": [
+        "T1530",
+        "T1537"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerAbnormalTotalBytesSize.yaml",
+      "file": "ZscalerAbnormalTotalBytesSize.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    },
+    {
+      "id": "6ae7b9e0-462a-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Applications Used by Accounts (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Applications Used by Accounts (Zscaler ZPA)",
+      "description": "Shows ZPA private applications used by each connecting account. The vendor application\nlabel is read from AdditionalFields.Application and falls back to the normalized DstFQDN.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| extend ZPA = todynamic(AdditionalFields)\n| extend Application = coalesce(tostring(ZPA.Application), DstFQDN)\n| where isnotempty(Application) and isnotempty(SrcUsername)\n| summarize EventCount = count() by Application, SrcUsername\n| order by Application asc, EventCount desc\n| extend AccountCustomEntity = SrcUsername\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerApplicationByUsers.yaml",
+      "file": "ZscalerApplicationByUsers.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": [
+        "Application"
+      ]
+    },
+    {
+      "id": "5467efc0-422c-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Connection Close Reasons (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Connection Close Reasons (Zscaler ZPA)",
+      "description": "Shows the 20 most frequent ZPA session-close reasons and affected users. Session close is\nrepresented by ASIM EventSubType End. The close reason is expected in\nEventOriginalResultDetails, with AdditionalFields.ConnectionCloseReason as a documented\nvendor-specific fallback.\n",
+      "category": "Hunting Queries",
+      "query": "let TopCloseReasons =\n    _Im_NetworkSession\n    | where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n    | where EventSubType == \"End\"\n    | extend ZPA = todynamic(AdditionalFields)\n    | extend CloseReason = coalesce(EventOriginalResultDetails, tostring(ZPA.ConnectionCloseReason))\n    | where isnotempty(CloseReason)\n    | summarize EventCount = count(), Users = make_set(SrcUsername, 1000) by CloseReason\n    | top 20 by EventCount desc;\nTopCloseReasons\n| mv-expand AccountCustomEntity = Users to typeof(string)\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerConnectionCloseReason.yaml",
+      "file": "ZscalerConnectionCloseReason.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": [
+        "ConnectionCloseReason"
+      ]
+    },
+    {
+      "id": "20733e72-4231-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Destination Ports by IP (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Destination Ports by IP (Zscaler ZPA)",
+      "description": "Shows destination IP addresses observed on each destination port.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where isnotempty(DstIpAddr) and isnotnull(DstPortNumber)\n| summarize EventCount = count() by DstPortNumber, DstIpAddr\n| order by DstPortNumber asc, EventCount desc\n| extend IPCustomEntity = DstIpAddr\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "IP",
+          "fieldMappings": [
+            {
+              "identifier": "Address",
+              "columnName": "IPCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerIPsByPorts.yaml",
+      "file": "ZscalerIPsByPorts.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    },
+    {
+      "id": "bf8ce3e8-422a-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Users by Source Location Countries (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Users by Source Location Countries (Zscaler ZPA)",
+      "description": "Shows connecting users by source country. Returning one row per user and country keeps\nthe upstream Account entity mapping scalar and directly pivotable during investigation.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where isnotempty(SrcGeoCountry) and isnotempty(SrcUsername)\n| summarize EventCount = count() by SrcGeoCountry, SrcUsername\n| order by SrcGeoCountry asc, EventCount desc\n| extend AccountCustomEntity = SrcUsername\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerSourceLocation.yaml",
+      "file": "ZscalerSourceLocation.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    },
+    {
+      "id": "26d5244a-462f-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Top Connectors (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Top Connectors (Zscaler ZPA)",
+      "description": "Shows the 20 ZPA App Connectors responsible for the most normalized network bytes.\nConnector is a vendor-specific ZPA identifier retained as AdditionalFields.Connector;\nbyte volume is read from the standard ASIM NetworkBytes field.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| extend ZPA = todynamic(AdditionalFields)\n| extend Connector = tostring(ZPA.Connector)\n| where isnotempty(Connector)\n| summarize TotalBytes = sum(tolong(NetworkBytes)), SessionCount = count() by Connector\n| top 20 by TotalBytes desc\n| extend ProcessCustomEntity = Connector\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Process",
+          "fieldMappings": [
+            {
+              "identifier": "ProcessId",
+              "columnName": "ProcessCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerTopConnectors.yaml",
+      "file": "ZscalerTopConnectors.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": [
+        "Connector"
+      ]
+    },
+    {
+      "id": "baf67720-4623-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Top Source IP (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Top Source IP (Zscaler ZPA)",
+      "description": "Shows the 20 source IP addresses with the most allowed ZPA access sessions. The upstream\nraw open action is represented by the normalized ASIM Allow action.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where DvcAction == \"Allow\"\n| where isnotempty(SrcIpAddr)\n| summarize EventCount = count() by SrcIpAddr\n| top 20 by EventCount desc\n| extend IPCustomEntity = SrcIpAddr\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "IP",
+          "fieldMappings": [
+            {
+              "identifier": "Address",
+              "columnName": "IPCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerTopSourceIP.yaml",
+      "file": "ZscalerTopSourceIP.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    },
+    {
+      "id": "d311eb1e-4231-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Rare URL Hostname Requests (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Rare URL Hostname Requests (Zscaler ZPA)",
+      "description": "Shows the 20 least frequently observed ZPA destination hostnames.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where isnotempty(DstFQDN)\n| summarize RequestCount = count() by DstFQDN\n| top 20 by RequestCount asc\n| extend UrlCustomEntity = DstFQDN\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "URL",
+          "fieldMappings": [
+            {
+              "identifier": "Url",
+              "columnName": "UrlCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerUrlhostname.yaml",
+      "file": "ZscalerUrlhostname.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    },
+    {
+      "id": "018e11f4-4627-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Users Access Groups (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Users Access Groups (Zscaler ZPA)",
+      "description": "Shows the ZPA application groups observed for each connecting user. AppGroup is a\nvendor-specific ZPA dimension and must be retained as AdditionalFields.AppGroup.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| extend ZPA = todynamic(AdditionalFields)\n| extend ApplicationGroup = tostring(ZPA.AppGroup)\n| where isnotempty(SrcUsername) and isnotempty(ApplicationGroup)\n| summarize ApplicationGroups = make_set(ApplicationGroup, 1000), EventCount = count() by SrcUsername\n| extend AccountCustomEntity = SrcUsername\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerUserAccessGroups.yaml",
+      "file": "ZscalerUserAccessGroups.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": [
+        "AppGroup"
+      ]
+    },
+    {
+      "id": "22545900-422d-11ec-81d3-0242ac130003",
+      "name": "ASIM - Zscaler Server Error by User (Zscaler ZPA)",
+      "displayName": "ASIM - Zscaler Server Error by User (Zscaler ZPA)",
+      "description": "Shows Zscaler Private Access server-open errors by connecting user. The upstream raw\nDstUserName is represented by ASIM SrcUsername, and the vendor result detail is expected\nin EventOriginalResultDetails while EventResult carries the normalized Failure value.\n",
+      "category": "Hunting Queries",
+      "query": "_Im_NetworkSession\n| where EventVendor =~ \"Zscaler\" and EventProduct has \"Private Access\"\n| where EventResult == \"Failure\"\n| where EventOriginalResultDetails has \"AST_MT_SETUP_ERR_OPEN_SERVER_ERROR\"\n| summarize ServerErrorCount = count() by SrcUsername\n| top 20 by ServerErrorCount desc\n| extend AccountCustomEntity = SrcUsername\n",
+      "tactics": [
+        "InitialAccess"
+      ],
+      "techniques": [
+        "T1190",
+        "T1133"
+      ],
+      "entityMappings": [
+        {
+          "entityType": "Account",
+          "fieldMappings": [
+            {
+              "identifier": "Name",
+              "columnName": "AccountCustomEntity"
+            }
+          ]
+        }
+      ],
+      "requiredDataConnectors": [
+        {
+          "connectorId": "ASimNetworkSession",
+          "dataTypes": [
+            "_Im_NetworkSession"
+          ]
+        }
+      ],
+      "version": "1.0.0",
+      "sourceFile": "ZscalerUserServerErrors.yaml",
+      "file": "ZscalerUserServerErrors.yaml",
+      "parser": "_Im_NetworkSession",
+      "additionalFields": []
+    }
+  ]
+}

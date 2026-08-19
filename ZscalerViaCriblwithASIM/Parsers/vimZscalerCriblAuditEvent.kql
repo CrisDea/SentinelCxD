@@ -1,0 +1,19 @@
+ZscalerCribl_CL
+| where not(disabled)
+| where array_index_of(AsimSchemas, 'AuditEvent') >= 0
+| where (isnull(starttime) or TimeGenerated >= starttime) and (isnull(endtime) or TimeGenerated < endtime)
+| where array_length(srcipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(SrcIpAddr, srcipaddr_has_any_prefix)
+| where array_length(actorusername_has_any) == 0 or ActorUsername has_any (actorusername_has_any)
+| where array_length(operation_has_any) == 0 or Operation has_any (operation_has_any)
+| where array_length(eventtype_in) == 0 or EventType in~ (eventtype_in)
+| where eventresult == '*' or EventResult =~ eventresult
+| where array_length(object_has_any) == 0 or Object has_any (object_has_any)
+| where array_length(newvalue_has_any) == 0 or NewValue has_any (newvalue_has_any)
+| extend EventSchema='AuditEvent', EventSchemaVersion='0.1.0', EventVendor='Zscaler',
+    AdditionalFields=bag_merge(iff(isnull(AdditionalFields), dynamic({}), AdditionalFields), bag_pack('ZscalerFamily', ZscalerFamily, 'ZscalerSubfamily', ZscalerSubfamily))
+| project TimeGenerated, EventStartTime, EventEndTime, EventSchema, EventSchemaVersion,
+    EventVendor, EventProduct, EventProductVersion, EventType, EventSubType, EventResult, EventResultDetails,
+    EventOriginalResultDetails, EventOriginalType, EventOriginalUid, EventUid, EventCount, EventSeverity,
+    EventOriginalSeverity, EventMessage, RuleName, Operation, ActorUsername, ActorUsernameType,
+    ActorUserId, Object, ObjectId, ObjectType, NewValue, OldValue,
+    SrcIpAddr, SrcHostname, SrcGeoCountry, DvcHostname, DvcIpAddr, AdditionalFields
