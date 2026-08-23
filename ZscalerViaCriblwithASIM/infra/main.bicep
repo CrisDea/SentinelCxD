@@ -30,7 +30,10 @@ param operationTeamsConnectionName string = 'teams-zscaler-zia-operation'
 param approverUpn string = 'securityanalyst@contoso.com'
 
 @description('Deploy analytic rules enabled.')
-param analyticsRulesEnabled bool = true
+param analyticsRulesEnabled bool = false
+
+@description('Optional rule-ID namespace for recovery from Sentinel deleted-rule tombstones. Leave empty for stable upstream rule IDs.')
+param analyticRuleIdNamespace string = ''
 
 @description('Logic App state. Keep Disabled until secrets and Teams are ready.')
 @allowed([
@@ -124,6 +127,10 @@ param criblPrincipalType string = 'ServicePrincipal'
 ])
 param criblPublicNetworkAccess string = 'Enabled'
 
+@description('Send Key Vault and Logic App platform diagnostics to the target Log Analytics workspace.')
+param diagnosticSettingsEnabled bool = true
+
+var packIdentity = 'SentinelCxD/ZscalerViaCriblwithASIM/2.1'
 var roleIds = {
   logAnalyticsReader: '73c42c96-874c-492b-b04d-ab87d138a893'
   sentinelResponder: '3e150937-b8fe-4cfb-8069-0eaf05ecd056'
@@ -132,6 +139,11 @@ var roleIds = {
 }
 
 var rules = loadJsonContent('../Analytic Rules/rules.json')
+var analyticRuleResourceNames = [
+  for rule in rules: empty(analyticRuleIdNamespace)
+    ? rule.id
+    : guid(workspace.id, analyticRuleIdNamespace, rule.id)
+]
 var huntingQueries = loadJsonContent('../Hunting Queries/hunting-queries.json').queries
 var workbookDefinitions = loadJsonContent('generated/workbooks.json').workbooks
 
@@ -229,9 +241,90 @@ module operationPlaybook '../Playbooks/Zscaler-ZIA-Operation/azuredeploy.json' =
   }
 }
 
+resource incidentWorkflow 'Microsoft.Logic/workflows@2019-05-01' existing = {
+  name: playbookName
+}
+
+resource operationWorkflow 'Microsoft.Logic/workflows@2019-05-01' existing = {
+  name: operationPlaybookName
+}
+
+resource keyVaultDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'zscaler-asim-monitoring'
+  scope: keyVault
+  properties: {
+    workspaceId: workspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      {
+        category: 'AuditEvent'
+        enabled: diagnosticSettingsEnabled
+      }
+      {
+        category: 'AzurePolicyEvaluationDetails'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+  }
+}
+
+resource incidentWorkflowDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'zscaler-asim-monitoring'
+  scope: incidentWorkflow
+  properties: {
+    workspaceId: workspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+  }
+  dependsOn: [
+    playbook
+  ]
+}
+
+resource operationWorkflowDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'zscaler-asim-monitoring'
+  scope: operationWorkflow
+  properties: {
+    workspaceId: workspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: diagnosticSettingsEnabled
+      }
+    ]
+  }
+  dependsOn: [
+    operationPlaybook
+  ]
+}
+
 resource analyticRules 'Microsoft.SecurityInsights/alertRules@2025-06-01' = [
-  for rule in rules: {
-    name: rule.id
+  for (rule, index) in rules: {
+    name: analyticRuleResourceNames[index]
     scope: workspace
     kind: 'Scheduled'
     properties: {
@@ -402,10 +495,10 @@ resource automationRule 'Microsoft.SecurityInsights/automationRules@2025-06-01' 
             propertyName: 'IncidentRelatedAnalyticRuleIds'
             operator: 'Contains'
             propertyValues: [
-              for rule in rules: extensionResourceId(
+              for (rule, index) in rules: extensionResourceId(
                 workspace.id,
                 'Microsoft.SecurityInsights/alertRules',
-                rule.id
+                analyticRuleResourceNames[index]
               )
             ]
           }
@@ -428,23 +521,42 @@ resource automationRule 'Microsoft.SecurityInsights/automationRules@2025-06-01' 
   ]
 }
 
+output packIdentity string = packIdentity
 output workspaceResourceId string = workspace.id
+output createdIngestionLandingZone bool = createIngestionLandingZone
 output criblCanonicalTableName string = criblAsim.outputs.canonicalTableName
+output criblCanonicalTableResourceId string = criblAsim.outputs.canonicalTableResourceId
 output criblLogsIngestionEndpoint string = criblAsim.outputs.logsIngestionEndpoint
 output criblDcrImmutableId string = criblAsim.outputs.dcrImmutableId
 output criblStreamName string = criblAsim.outputs.streamName
 output criblDataCollectionRuleResourceId string = criblAsim.outputs.dataCollectionRuleResourceId
+output criblDataCollectionEndpointResourceId string = criblAsim.outputs.dataCollectionEndpointResourceId
 output keyVaultResourceId string = keyVault.id
 output keyVaultUri string = keyVault.properties.vaultUri
 output playbookResourceId string = playbook.outputs.workflowResourceId
 output playbookPrincipalId string = playbook.outputs.principalId
+output sentinelConnectionResourceId string = playbook.outputs.sentinelConnectionResourceId
+output incidentTeamsConnectionResourceId string = playbook.outputs.teamsConnectionResourceId
 output operationPlaybookResourceId string = operationPlaybook.outputs.workflowResourceId
 output operationPlaybookPrincipalId string = operationPlaybook.outputs.principalId
+output operationTeamsConnectionResourceId string = operationPlaybook.outputs.teamsConnectionResourceId
+output keyVaultDiagnosticSettingResourceId string = keyVaultDiagnostics.id
+output playbookDiagnosticSettingResourceId string = incidentWorkflowDiagnostics.id
+output operationPlaybookDiagnosticSettingResourceId string = operationWorkflowDiagnostics.id
+output packOwnedParserResourceIds array = criblAsim.outputs.packOwnedParserResourceIds
+output sharedCustomParserResourceIds array = criblAsim.outputs.sharedCustomParserResourceIds
+output packOwnedRoleAssignmentResourceIds array = [
+  logAnalyticsReaderAssignment.id
+  sentinelResponderAssignment.id
+  keyVaultSecretsAssignment.id
+  operationKeyVaultSecretsAssignment.id
+]
+output criblRoleAssignmentResourceId string = criblAsim.outputs.criblRoleAssignmentResourceId
 output analyticRuleResourceIds array = [
-  for rule in rules: extensionResourceId(
+  for (rule, index) in rules: extensionResourceId(
     workspace.id,
     'Microsoft.SecurityInsights/alertRules',
-    rule.id
+    analyticRuleResourceNames[index]
   )
 ]
 output huntingQueryResourceIds array = [for (hunt, index) in huntingQueries: huntingSearches[index].id]

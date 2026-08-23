@@ -378,7 +378,12 @@ output dcrImmutableId string = createIngestionLandingZone
   ? dataCollectionRule!.properties.immutableId
   : existingDcrImmutableId
 output streamName string = createIngestionLandingZone ? inputStreamName : existingStreamName
+output canonicalTableResourceId string = createIngestionLandingZone ? canonicalTable!.id : ''
 output dataCollectionRuleResourceId string = createIngestionLandingZone ? dataCollectionRule!.id : ''
+output dataCollectionEndpointResourceId string = createIngestionLandingZone ? dataCollectionEndpoint!.id : ''
+output criblRoleAssignmentResourceId string = createIngestionLandingZone && !empty(criblPrincipalObjectId)
+  ? criblIngestionRole!.id
+  : ''
 output sourceSpecificParserNames array = [
   'vimZscalerCriblAuditEvent'
   'vimZscalerCriblAuthentication'
@@ -394,4 +399,18 @@ output customUnifyingParserNames array = [
   'Im_FileEventCustom'
   'Im_NetworkSessionCustom'
   'Im_WebSessionCustom'
+]
+output packOwnedParserResourceIds array = [
+  for parser in sourceParserDefinitions: resourceId(
+    'Microsoft.OperationalInsights/workspaces/savedSearches',
+    workspaceName,
+    parser.alias
+  )
+]
+output sharedCustomParserResourceIds array = [
+  for parser in customParserDefinitions: resourceId(
+    'Microsoft.OperationalInsights/workspaces/savedSearches',
+    workspaceName,
+    parser.alias
+  )
 ]

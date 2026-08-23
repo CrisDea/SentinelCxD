@@ -12,7 +12,7 @@
       "value": "<tenant-object-id-for-microsoft-sentinel-service-principal>"
     },
     "analyticsRulesEnabled": {
-      "value": true
+      "value": false
     },
     "createIngestionLandingZone": {
       "value": true
@@ -25,6 +25,9 @@
     },
     "criblPublicNetworkAccess": {
       "value": "Enabled"
+    },
+    "diagnosticSettingsEnabled": {
+      "value": true
     },
     "workflowState": {
       "value": "Disabled"

@@ -14,7 +14,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Validate portable artifacts
         shell: pwsh
@@ -27,7 +29,9 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Parse the deployment script with Windows PowerShell 5.1
         shell: powershell
@@ -46,8 +50,9 @@ jobs:
       - name: Scan for committed secret values
         shell: pwsh
         run: |
-          $patterns = 'client_secret\s*[:=]\s*["''][^@<]', `
-            'access_token\s*[:=]\s*["''][A-Za-z0-9]'
+          $patterns = `
+            '(?i)(client_secret|access_token|refresh_token|api_key|password)\s*[:=]\s*["''][^"''<>\s]{16,}["'']', `
+            '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
           foreach ($pattern in $patterns) {
             $matches = Get-ChildItem -Recurse -File |
               Where-Object FullName -NotMatch '\\.git\\' |

@@ -46,8 +46,46 @@ existing vendor content.
 .\scripts\Deploy-Pack.ps1 `
   -SubscriptionId '<subscription-id>' `
   -ResourceGroup '<resource-group>' `
-  -ParametersFile .\infra\main.parameters.json
+  -WorkspaceName '<workspace-name>'
 ```
+
+The script deploys analytic rules, workflows, mutation, and automation
+disabled. Platform diagnostics are enabled and sent to the target workspace.
+After a clean reset, it retries only the transient Sentinel conflict caused by
+recently deleted analytic-rule IDs; retry count and delay are bounded and
+parameterized.
+
+Leave `-AnalyticRuleIdNamespace` empty for normal deployments and upgrades so
+the upstream rule IDs remain stable. Set it only to recover from a prior manual
+deletion while Sentinel is still retaining those IDs.
+
+## Clean pack redeployment
+
+Use the last successful deployment name so cleanup is constrained to its
+resource outputs:
+
+```powershell
+.\scripts\Remove-Pack.ps1 `
+  -SubscriptionId '<subscription-id>' `
+  -ResourceGroup '<resource-group>' `
+  -WorkspaceName '<workspace-name>' `
+  -DeploymentName '<successful-deployment-name>' `
+  -RemoveIngestionLandingZone
+
+.\scripts\Deploy-Pack.ps1 `
+  -SubscriptionId '<subscription-id>' `
+  -ResourceGroup '<resource-group>' `
+  -WorkspaceName '<workspace-name>'
+```
+
+Cleanup preserves the existing Sentinel workspace, unrelated content, and the
+purge-protected Key Vault. It also preserves shared `Im_*Custom` ASIM unifying
+parsers and the canonical table with its data because those workspace-wide
+resources may serve other integrations or predate this pack.
+Analytic rules are disabled and preserved so a redeployment can reuse their
+stable pack-namespaced IDs without waiting for Sentinel deletion tombstones.
+`-RemoveIngestionLandingZone` removes the pack DCR, DCE, and Cribl role
+assignment so they can be recreated safely.
 
 ## Configure secrets securely
 
@@ -92,3 +130,6 @@ provided during deployment, the pack creates this assignment.
 ```
 
 The output is written to `dist/`.
+
+Tagged releases are built in GitHub Actions and include an attested archive
+plus its SHA-256 checksum.

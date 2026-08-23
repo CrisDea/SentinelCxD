@@ -2,7 +2,7 @@
   "publisherId": "community",
   "offerId": "zscaler-asim-cribl",
   "firstPublishDate": "2026-08-18",
-  "lastPublishDate": "2026-08-18",
+  "lastPublishDate": "2026-08-23",
   "providers": [
     "Zscaler",
     "Cribl"
@@ -17,6 +17,6 @@
   "support": {
     "name": "Community",
     "tier": "Community",
-    "link": "https://github.com/"
+    "link": "https://github.com/CrisDea/SentinelCxD"
   }
 }

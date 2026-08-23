@@ -138,8 +138,15 @@
             "name": "analyticsRulesEnabled",
             "type": "Microsoft.Common.CheckBox",
             "label": "Enable the analytic rules after deployment",
+            "defaultValue": false,
+            "toolTip": "Keep disabled until ASIM data quality and alert volume are validated."
+          },
+          {
+            "name": "diagnosticSettingsEnabled",
+            "type": "Microsoft.Common.CheckBox",
+            "label": "Send Key Vault and Logic App diagnostics to the workspace",
             "defaultValue": true,
-            "toolTip": "Rules can be enabled before data arrives because they query ASIM unifying parsers."
+            "toolTip": "Recommended by Microsoft Defender for Cloud for investigation and audit trails."
           }
         ]
       }
@@ -155,6 +162,7 @@
       "sentinelAutomationPrincipalId": "[steps('automation').sentinelAutomationPrincipalId]",
       "zscalerBlockCategory": "[steps('automation').zscalerBlockCategory]",
       "analyticsRulesEnabled": "[steps('automation').analyticsRulesEnabled]",
+      "diagnosticSettingsEnabled": "[steps('automation').diagnosticSettingsEnabled]",
       "workflowState": "Disabled",
       "operationWorkflowState": "Disabled",
       "enableZiaMutatingOperations": false,

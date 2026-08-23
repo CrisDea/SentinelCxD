@@ -46,6 +46,21 @@ rule can invoke the workflow.
   once.
 - The success marker is written only after successful Zscaler activation.
 - Incident comments provide an audit trail and an idempotency marker.
+- Key Vault audit, Azure Policy evaluation, and both Logic App runtime logs and
+  metrics are sent to the target Log Analytics workspace by default.
+
+## Network exposure
+
+The portable default keeps the DCE and Key Vault public endpoints available
+because Cribl can run outside Azure and the included playbooks are Consumption
+Logic Apps. Authentication, RBAC, request claims, and disabled-by-default
+automation remain enforced.
+
+Microsoft Defender for Cloud recommends Private Link for the Key Vault and
+private Azure Monitor connectivity for the DCE. Apply those controls only with
+an architecture that gives Cribl and the workflows verified private network
+paths. Do not disable public endpoints before testing those paths, because that
+would make ingestion or secret retrieval unavailable.
 
 ## Operator activation sequence
 

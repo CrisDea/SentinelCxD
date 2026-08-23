@@ -9,5 +9,6 @@ deployment.
 
 The generated ZIP also contains 12 analytic rules, 10 hunting queries,
 21 workbook JSON files, ASIM parser sources, two playbook templates, the
-Cribl contract and ingestion module, deployment scripts, CI validation, and
-third-party notices so recipients can inspect and rebuild the package.
+Cribl contract and ingestion module, deployment and pack-only cleanup scripts,
+CI validation, and third-party notices so recipients can inspect and rebuild
+the package.

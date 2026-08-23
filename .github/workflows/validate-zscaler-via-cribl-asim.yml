@@ -21,7 +21,9 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Validate portable artifacts
         shell: pwsh
@@ -50,7 +52,7 @@ jobs:
         working-directory: ZscalerViaCriblwithASIM
         run: |
           $patterns = `
-            '(?i)(client_secret|access_token|refresh_token|api_key|password)\s*[:=]\s*["''][A-Za-z0-9+/_.~-]{16,}["'']', `
+            '(?i)(client_secret|access_token|refresh_token|api_key|password)\s*[:=]\s*["''][^"''<>\s]{16,}["'']', `
             '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
           foreach ($pattern in $patterns) {
             $matches = Get-ChildItem -Recurse -File |

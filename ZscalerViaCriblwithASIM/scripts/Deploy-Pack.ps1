@@ -22,8 +22,14 @@ param(
     [ValidateSet('Enabled', 'Disabled')]
     [string]$CriblPublicNetworkAccess = 'Enabled',
     [bool]$CreateIngestionLandingZone = $true,
-    [bool]$AnalyticsRulesEnabled = $true,
+    [bool]$AnalyticsRulesEnabled = $false,
+    [string]$AnalyticRuleIdNamespace = '',
+    [bool]$DiagnosticSettingsEnabled = $true,
     [string]$DeploymentName = 'zscaler-via-cribl-asim',
+    [ValidateRange(1, 10)]
+    [int]$DeploymentRetryCount = 6,
+    [ValidateRange(30, 600)]
+    [int]$DeploymentRetryDelaySeconds = 180,
     [switch]$SkipWhatIf
 )
 
@@ -69,6 +75,8 @@ $templateParameters = @(
     "criblTableRetentionInDays=$CriblTableRetentionInDays"
     "criblPublicNetworkAccess=$CriblPublicNetworkAccess"
     "analyticsRulesEnabled=$($AnalyticsRulesEnabled.ToString().ToLowerInvariant())"
+    "analyticRuleIdNamespace=$AnalyticRuleIdNamespace"
+    "diagnosticSettingsEnabled=$($DiagnosticSettingsEnabled.ToString().ToLowerInvariant())"
     'workflowState=Disabled'
     'operationWorkflowState=Disabled'
     'enableZiaMutatingOperations=false'
@@ -117,15 +125,36 @@ if (-not $SkipWhatIf) {
 }
 
 Write-Host 'Deploying content pack with response automation disabled...'
-$deploymentJson = & az deployment group create `
-    --resource-group $ResourceGroup `
-    --name $DeploymentName `
-    --template-file $template `
-    --parameters $templateParameters `
-    --only-show-errors `
-    --output json
-if ($LASTEXITCODE -ne 0) {
-    throw 'Azure deployment failed.'
+$deploymentJson = $null
+for ($attempt = 1; $attempt -le $DeploymentRetryCount; $attempt++) {
+    $deploymentResult = & az deployment group create `
+        --resource-group $ResourceGroup `
+        --name $DeploymentName `
+        --template-file $template `
+        --parameters $templateParameters `
+        --only-show-errors `
+        --output json 2>&1
+    $deploymentExitCode = $LASTEXITCODE
+    $deploymentText = $deploymentResult -join [Environment]::NewLine
+
+    if ($deploymentExitCode -eq 0) {
+        $deploymentJson = $deploymentText
+        break
+    }
+
+    $isSentinelDeletionConflict = $deploymentText -match
+        'was recently deleted.*allow some time before re-using'
+    if (-not $isSentinelDeletionConflict -or
+        $attempt -eq $DeploymentRetryCount) {
+        throw "Azure deployment failed.`n$deploymentText"
+    }
+
+    Write-Warning (
+        "Sentinel rule deletion is still propagating. " +
+        "Retrying in $DeploymentRetryDelaySeconds seconds " +
+        "($attempt/$DeploymentRetryCount)."
+    )
+    Start-Sleep -Seconds $DeploymentRetryDelaySeconds
 }
 
 $deployment = $deploymentJson | ConvertFrom-Json

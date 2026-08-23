@@ -388,6 +388,79 @@ $mainBicep = Get-Content (Join-Path $root 'infra\main.bicep') -Raw
 Assert-Condition ($mainBicep -match `
     'value:\s+take\(hunt\.description,\s*256\)') `
     'Saved-search description tags must be capped at Azure''s 256-character limit.'
+Assert-Condition ([regex]::Matches(
+        $mainBicep,
+        'Microsoft\.Insights/diagnosticSettings@2021-05-01-preview'
+    ).Count -eq 3) `
+    'Expected Key Vault and both Logic Apps to have diagnostic settings.'
+Assert-Condition ($mainBicep -match `
+    'param\s+diagnosticSettingsEnabled\s+bool\s*=\s*true') `
+    'Platform diagnostics must be enabled by default.'
+Assert-Condition ($mainBicep -match `
+    'param\s+analyticsRulesEnabled\s+bool\s*=\s*false') `
+    'Analytic rules must be disabled by default.'
+Assert-Condition ($mainBicep -match `
+    "param\s+analyticRuleIdNamespace\s+string\s*=\s*''") `
+    'Analytic rules must use stable upstream IDs by default.'
+Assert-Condition ($mainBicep -notmatch
+    '=\s*if\s*\(\s*diagnosticSettingsEnabled\s*\)') `
+    'Diagnostic settings must remain addressable when collection is disabled.'
+
+foreach ($scriptName in @('Deploy-Pack.ps1', 'Remove-Pack.ps1')) {
+    $tokens = $null
+    $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot $scriptName),
+        [ref]$tokens,
+        [ref]$parseErrors
+    ) | Out-Null
+    Assert-Condition ($parseErrors.Count -eq 0) `
+        "$scriptName must parse with Windows PowerShell 5.1."
+}
+$deployPackScript = Get-Content (
+    Join-Path $PSScriptRoot 'Deploy-Pack.ps1'
+) -Raw
+Assert-Condition ($deployPackScript -match
+    'was recently deleted\.\*allow some time before re-using') `
+    'Deploy-Pack.ps1 must retry only the Sentinel deleted-rule conflict.'
+Assert-Condition ($deployPackScript -match
+    'ValidateRange\(1,\s*10\)[\s\S]+DeploymentRetryCount') `
+    'Sentinel deployment retry attempts must be bounded.'
+$removePackScript = Get-Content (
+    Join-Path $PSScriptRoot 'Remove-Pack.ps1'
+) -Raw
+foreach ($requiredCleanupOutput in @(
+        'keyVaultDiagnosticSettingResourceId'
+        'playbookDiagnosticSettingResourceId'
+        'operationPlaybookDiagnosticSettingResourceId'
+        'packOwnedParserResourceIds'
+        'packOwnedRoleAssignmentResourceIds'
+        'criblRoleAssignmentResourceId'
+    )) {
+    Assert-Condition ($removePackScript -match
+        [regex]::Escape("'$requiredCleanupOutput'")) `
+        "Remove-Pack.ps1 must require $requiredCleanupOutput."
+}
+Assert-Condition ($removePackScript -notmatch
+    'workspace\s+table\s+delete') `
+    'Remove-Pack.ps1 must preserve the canonical table and its data.'
+Assert-Condition ($removePackScript -notmatch
+    'sharedCustomParserResourceIds') `
+    'Remove-Pack.ps1 must preserve shared ASIM custom unifying parsers.'
+Assert-Condition ($removePackScript -match
+    'Disable-AzAnalyticRule\s+\$resourceId') `
+    'Remove-Pack.ps1 must disable and preserve analytic rules.'
+Assert-Condition ($removePackScript -notmatch
+    'Remove-AzResource\s+\$outputs\.analyticRule') `
+    'Remove-Pack.ps1 must not delete analytic rules and create tombstones.'
+Assert-Condition ([regex]::Matches(
+        $removePackScript,
+        'Remove-AzDiagnosticSetting\s+\$outputs\.'
+    ).Count -eq 3) `
+    'Remove-Pack.ps1 must use the diagnostic-settings API for all diagnostics.'
+Assert-Condition ($mainBicep -notmatch
+    'packOwnedRoleAssignmentResourceIds[\s\S]+sentinelAutomationAssignment') `
+    'Shared Sentinel automation RBAC must not be marked pack-owned.'
 
 Write-Host 'Building and linting Bicep...'
 Invoke-Az @(

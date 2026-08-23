@@ -5,5 +5,7 @@
 **/.env.*
 **/bin/
 **/obj/
+**/dist/
+**/infra/main.json
 **/.DS_Store
 Thumbs.db

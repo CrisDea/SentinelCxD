@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "15733934301541058701"
+      "templateHash": "16196421827576946444"
     }
   },
   "parameters": {
@@ -75,9 +75,16 @@
     },
     "analyticsRulesEnabled": {
       "type": "bool",
-      "defaultValue": true,
+      "defaultValue": false,
       "metadata": {
         "description": "Deploy analytic rules enabled."
+      }
+    },
+    "analyticRuleIdNamespace": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional rule-ID namespace for recovery from Sentinel deleted-rule tombstones. Leave empty for stable upstream rule IDs."
       }
     },
     "workflowState": {
@@ -263,9 +270,23 @@
       "metadata": {
         "description": "DCE public network access. Disable only after Azure Monitor Private Link connectivity is ready."
       }
+    },
+    "diagnosticSettingsEnabled": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Send Key Vault and Logic App platform diagnostics to the target Log Analytics workspace."
+      }
     }
   },
   "variables": {
+    "copy": [
+      {
+        "name": "analyticRuleResourceNames",
+        "count": "[length(variables('rules'))]",
+        "input": "[if(empty(parameters('analyticRuleIdNamespace')), variables('rules')[copyIndex('analyticRuleResourceNames')].id, guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), parameters('analyticRuleIdNamespace'), variables('rules')[copyIndex('analyticRuleResourceNames')].id))]"
+      }
+    ],
     "$fxv#0": [
       {
         "id": "d501c4dd-cc45-4a87-a0b6-e97329d381e7",
@@ -6129,6 +6150,7 @@
         }
       ]
     },
+    "packIdentity": "SentinelCxD/ZscalerViaCriblwithASIM/2.1",
     "roleIds": {
       "logAnalyticsReader": "73c42c96-874c-492b-b04d-ab87d138a893",
       "sentinelResponder": "3e150937-b8fe-4cfb-8069-0eaf05ecd056",
@@ -6173,6 +6195,85 @@
       }
     },
     {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+      "name": "zscaler-asim-monitoring",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+        "logAnalyticsDestinationType": "Dedicated",
+        "logs": [
+          {
+            "category": "AuditEvent",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          },
+          {
+            "category": "AzurePolicyEvaluationDetails",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Logic/workflows', parameters('playbookName'))]",
+      "name": "zscaler-asim-monitoring",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+        "logAnalyticsDestinationType": "Dedicated",
+        "logs": [
+          {
+            "category": "WorkflowRuntime",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-asim-playbook')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Logic/workflows', parameters('operationPlaybookName'))]",
+      "name": "zscaler-asim-monitoring",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+        "logAnalyticsDestinationType": "Dedicated",
+        "logs": [
+          {
+            "category": "WorkflowRuntime",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": "[parameters('diagnosticSettingsEnabled')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-zia-operation-playbook')]"
+      ]
+    },
+    {
       "copy": {
         "name": "analyticRules",
         "count": "[length(variables('rules'))]"
@@ -6180,7 +6281,7 @@
       "type": "Microsoft.SecurityInsights/alertRules",
       "apiVersion": "2025-06-01",
       "scope": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
-      "name": "[variables('rules')[copyIndex()].id]",
+      "name": "[variables('analyticRuleResourceNames')[copyIndex()]]",
       "kind": "Scheduled",
       "properties": {
         "displayName": "[variables('rules')[copyIndex()].displayName]",
@@ -6361,7 +6462,7 @@
                   {
                     "name": "propertyValues",
                     "count": "[length(variables('rules'))]",
-                    "input": "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.SecurityInsights/alertRules', variables('rules')[copyIndex('propertyValues')].id)]"
+                    "input": "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.SecurityInsights/alertRules', variables('analyticRuleResourceNames')[copyIndex('propertyValues')])]"
                   }
                 ],
                 "propertyName": "IncidentRelatedAnalyticRuleIds",
@@ -6434,7 +6535,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "4539898333107878826"
+              "templateHash": "13577506995188878693"
             }
           },
           "parameters": {
@@ -7204,9 +7305,21 @@
               "type": "string",
               "value": "[if(parameters('createIngestionLandingZone'), variables('inputStreamName'), parameters('existingStreamName'))]"
             },
+            "canonicalTableResourceId": {
+              "type": "string",
+              "value": "[if(parameters('createIngestionLandingZone'), resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('workspaceName'), variables('tableName')), '')]"
+            },
             "dataCollectionRuleResourceId": {
               "type": "string",
               "value": "[if(parameters('createIngestionLandingZone'), resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName')), '')]"
+            },
+            "dataCollectionEndpointResourceId": {
+              "type": "string",
+              "value": "[if(parameters('createIngestionLandingZone'), resourceId('Microsoft.Insights/dataCollectionEndpoints', parameters('dataCollectionEndpointName')), '')]"
+            },
+            "criblRoleAssignmentResourceId": {
+              "type": "string",
+              "value": "[if(and(parameters('createIngestionLandingZone'), not(empty(parameters('criblPrincipalObjectId')))), extensionResourceId(resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName')), parameters('criblPrincipalObjectId'), variables('monitoringMetricsPublisherRoleId'))), '')]"
             },
             "sourceSpecificParserNames": {
               "type": "array",
@@ -7229,6 +7342,20 @@
                 "Im_NetworkSessionCustom",
                 "Im_WebSessionCustom"
               ]
+            },
+            "packOwnedParserResourceIds": {
+              "type": "array",
+              "copy": {
+                "count": "[length(variables('sourceParserDefinitions'))]",
+                "input": "[resourceId('Microsoft.OperationalInsights/workspaces/savedSearches', parameters('workspaceName'), variables('sourceParserDefinitions')[copyIndex()].alias)]"
+              }
+            },
+            "sharedCustomParserResourceIds": {
+              "type": "array",
+              "copy": {
+                "count": "[length(variables('customParserDefinitions'))]",
+                "input": "[resourceId('Microsoft.OperationalInsights/workspaces/savedSearches', parameters('workspaceName'), variables('customParserDefinitions')[copyIndex()].alias)]"
+              }
             }
           }
         }
@@ -11168,13 +11295,25 @@
     }
   ],
   "outputs": {
+    "packIdentity": {
+      "type": "string",
+      "value": "[variables('packIdentity')]"
+    },
     "workspaceResourceId": {
       "type": "string",
       "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
     },
+    "createdIngestionLandingZone": {
+      "type": "bool",
+      "value": "[parameters('createIngestionLandingZone')]"
+    },
     "criblCanonicalTableName": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.canonicalTableName.value]"
+    },
+    "criblCanonicalTableResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.canonicalTableResourceId.value]"
     },
     "criblLogsIngestionEndpoint": {
       "type": "string",
@@ -11192,6 +11331,10 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.dataCollectionRuleResourceId.value]"
     },
+    "criblDataCollectionEndpointResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.dataCollectionEndpointResourceId.value]"
+    },
     "keyVaultResourceId": {
       "type": "string",
       "value": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
@@ -11208,6 +11351,14 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-asim-playbook'), '2025-04-01').outputs.principalId.value]"
     },
+    "sentinelConnectionResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-asim-playbook'), '2025-04-01').outputs.sentinelConnectionResourceId.value]"
+    },
+    "incidentTeamsConnectionResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-asim-playbook'), '2025-04-01').outputs.teamsConnectionResourceId.value]"
+    },
     "operationPlaybookResourceId": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-zia-operation-playbook'), '2025-04-01').outputs.workflowResourceId.value]"
@@ -11216,11 +11367,48 @@
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-zia-operation-playbook'), '2025-04-01').outputs.principalId.value]"
     },
+    "operationTeamsConnectionResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-zia-operation-playbook'), '2025-04-01').outputs.teamsConnectionResourceId.value]"
+    },
+    "keyVaultDiagnosticSettingResourceId": {
+      "type": "string",
+      "value": "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Insights/diagnosticSettings', 'zscaler-asim-monitoring')]"
+    },
+    "playbookDiagnosticSettingResourceId": {
+      "type": "string",
+      "value": "[extensionResourceId(resourceId('Microsoft.Logic/workflows', parameters('playbookName')), 'Microsoft.Insights/diagnosticSettings', 'zscaler-asim-monitoring')]"
+    },
+    "operationPlaybookDiagnosticSettingResourceId": {
+      "type": "string",
+      "value": "[extensionResourceId(resourceId('Microsoft.Logic/workflows', parameters('operationPlaybookName')), 'Microsoft.Insights/diagnosticSettings', 'zscaler-asim-monitoring')]"
+    },
+    "packOwnedParserResourceIds": {
+      "type": "array",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.packOwnedParserResourceIds.value]"
+    },
+    "sharedCustomParserResourceIds": {
+      "type": "array",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.sharedCustomParserResourceIds.value]"
+    },
+    "packOwnedRoleAssignmentResourceIds": {
+      "type": "array",
+      "value": [
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), parameters('playbookName'), variables('roleIds').logAnalyticsReader))]",
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), parameters('playbookName'), variables('roleIds').sentinelResponder))]",
+        "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('playbookName'), variables('roleIds').keyVaultSecretsUser))]",
+        "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('operationPlaybookName'), variables('roleIds').keyVaultSecretsUser))]"
+      ]
+    },
+    "criblRoleAssignmentResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-zscaler-cribl-asim-ingestion'), '2025-04-01').outputs.criblRoleAssignmentResourceId.value]"
+    },
     "analyticRuleResourceIds": {
       "type": "array",
       "copy": {
         "count": "[length(variables('rules'))]",
-        "input": "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.SecurityInsights/alertRules', variables('rules')[copyIndex()].id)]"
+        "input": "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName')), 'Microsoft.SecurityInsights/alertRules', variables('analyticRuleResourceNames')[copyIndex()])]"
       }
     },
     "huntingQueryResourceIds": {

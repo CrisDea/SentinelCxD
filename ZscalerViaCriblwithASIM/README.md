@@ -25,6 +25,8 @@ The content queries ASIM unifying parsers instead of `CommonSecurityLog`,
   response operations
 - Optional `ZscalerCribl_CL` table, DCE, DCR, source-specific ASIM parsers,
   and ASIM custom unifying parsers
+- Key Vault and Logic App diagnostics sent to the target Log Analytics
+  workspace by default
 - Cribl normalization contracts and post-deployment KQL readiness tests
 - Bicep deployment and a redistributable Sentinel ARM package
 
@@ -61,9 +63,12 @@ single ingestion path.
 - Mutating operations have a second kill switch and explicit per-entity Teams
   approval.
 - Teams connectors require one-time delegated authorization.
-- Both workflows, the mutation kill switch, and the automation rule deploy
-  disabled. Enable them only after connectors, Key Vault, Cribl, and controlled
-  response tests pass.
+- Analytic rules, both workflows, the mutation kill switch, and the automation
+  rule deploy disabled. Enable them only after connectors, Key Vault, Cribl,
+  data quality, and controlled response tests pass.
+- Defender for Cloud diagnostic recommendations are addressed by default.
+  Key Vault and DCE public access remain explicit compatibility settings;
+  disable them only after private connectivity is proven.
 - No credentials or customer-specific values belong in this repository.
 
 ## Data prerequisites
@@ -101,6 +106,15 @@ Add `-SentinelAutomationPrincipalId` and `-CriblPrincipalObjectId` when those
 tenant identities are known. The script validates the deployment, blocks any
 resource-level deletion shown by what-if, and then deploys.
 
+For a controlled pack-only reset, use `scripts/Remove-Pack.ps1` with the last
+successful deployment name. The script targets deployment outputs and known
+parser aliases, preserves unrelated Sentinel resources and the purge-protected
+Key Vault, the shared `Im_*Custom` ASIM unifying parsers, and the canonical
+ingestion table and its data. Analytic rules are disabled and preserved to
+avoid Sentinel's deleted-rule tombstone window.
+`-RemoveIngestionLandingZone` removes only the pack DCR, DCE, and Cribl role
+assignment so they can be recreated safely.
+
 ### Microsoft Defender portal repository connection
 
 1. In the Defender portal, open **Microsoft Sentinel** >
@@ -119,6 +133,9 @@ Repositories and deploys the complete pack with safe defaults. See
 
 Never place Zscaler credentials in a parameters file. Create the documented
 Key Vault secrets through an approved secure channel after deployment.
+
+Version tags build the redistribution archive in GitHub Actions, publish its
+SHA-256 checksum, and attach GitHub artifact provenance.
 
 ## Customer-neutral distribution
 

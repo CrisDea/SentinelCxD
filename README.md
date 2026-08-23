@@ -1,6 +1,7 @@
 # SentinelCxD
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/CrisDea/SentinelCxD/badge)](https://scorecard.dev/viewer/?uri=github.com/CrisDea/SentinelCxD)
+[![CodeQL](https://github.com/CrisDea/SentinelCxD/actions/workflows/codeql.yml/badge.svg)](https://github.com/CrisDea/SentinelCxD/actions/workflows/codeql.yml)
 
 Reusable, customer-neutral Microsoft Sentinel content engineered for
 deployment through Azure Resource Manager or Microsoft Sentinel Repositories.
@@ -32,6 +33,9 @@ This repository must not contain customer identifiers, tenant or subscription
 IDs, workspace names, credentials, secrets, production logs, or exported
 incident data. All environment-specific values are supplied at deployment
 time.
+
+Security reports must use
+[GitHub private vulnerability reporting](SECURITY.md), not public issues.
 
 ## License
 
