@@ -26,6 +26,16 @@
     "criblPublicNetworkAccess": {
       "value": "Enabled"
     },
+    "keyVaultAllowedIpRules": {
+      "value": []
+    },
+    "operationAllowedCallerIpAddresses": {
+      "value": [
+        {
+          "addressRange": "0.0.0.0/32"
+        }
+      ]
+    },
     "diagnosticSettingsEnabled": {
       "value": true
     },

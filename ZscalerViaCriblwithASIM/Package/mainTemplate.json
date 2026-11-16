@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "16196421827576946444"
+      "templateHash": "13779555560908445623"
     }
   },
   "parameters": {
@@ -29,6 +29,24 @@
       "maxLength": 24,
       "metadata": {
         "description": "Globally unique Key Vault name. Defaults to a deterministic name."
+      }
+    },
+    "keyVaultAllowedIpRules": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Key Vault data-plane IP rules in { value: CIDR } form. Supply the outbound IP ranges for the Logic Apps; an empty list leaves the firewall closed."
+      }
+    },
+    "operationAllowedCallerIpAddresses": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "addressRange": "0.0.0.0/32"
+        }
+      ],
+      "metadata": {
+        "description": "IP ranges allowed to invoke the reusable ZIA operation trigger. Replace the fail-closed placeholder with the approved caller egress ranges before enabling the workflow."
       }
     },
     "playbookName": {
@@ -6188,8 +6206,8 @@
         "publicNetworkAccess": "Enabled",
         "networkAcls": {
           "bypass": "AzureServices",
-          "defaultAction": "Allow",
-          "ipRules": [],
+          "defaultAction": "Deny",
+          "ipRules": "[parameters('keyVaultAllowedIpRules')]",
           "virtualNetworkRules": []
         }
       }
@@ -8979,6 +8997,9 @@
           "TriggerAudience": {
             "value": "[parameters('operationTriggerAudience')]"
           },
+          "AllowedCallerIpAddresses": {
+            "value": "[parameters('operationAllowedCallerIpAddresses')]"
+          },
           "ApproverUpn": {
             "value": "[parameters('approverUpn')]"
           },
@@ -9054,6 +9075,17 @@
               "defaultValue": "https://management.azure.com/",
               "metadata": {
                 "description": "Exact aud claim required on the caller's Microsoft Entra access token. The caller must request a managed-identity token for this same audience."
+              }
+            },
+            "AllowedCallerIpAddresses": {
+              "type": "array",
+              "defaultValue": [
+                {
+                  "addressRange": "0.0.0.0/32"
+                }
+              ],
+              "metadata": {
+                "description": "Fail-closed IP allowlist for the HTTP Request trigger. Replace the placeholder with the approved caller's egress IP ranges before enabling the workflow."
               }
             },
             "ApproverUpn": {
@@ -9165,6 +9197,7 @@
                     "sasAuthenticationPolicy": {
                       "state": "Disabled"
                     },
+                    "allowedCallerIpAddresses": "[parameters('AllowedCallerIpAddresses')]",
                     "openAuthenticationPolicies": {
                       "policies": {
                         "ApprovedManagedIdentityOnly": {

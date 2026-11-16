@@ -2,15 +2,13 @@ name: Validate Zscaler via Cribl ASIM
 
 on:
   pull_request:
-    paths:
-      - 'ZscalerViaCriblwithASIM/**'
-      - '.github/workflows/validate-zscaler-via-cribl-asim.yml'
   push:
     branches:
       - main
     paths:
       - 'ZscalerViaCriblwithASIM/**'
       - '.github/workflows/validate-zscaler-via-cribl-asim.yml'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: read
@@ -31,6 +29,16 @@ jobs:
         run: |
           az bicep version
           .\scripts\Validate-Pack.ps1 -SkipLiveKql
+
+      - name: Test release version validation
+        shell: pwsh
+        working-directory: ZscalerViaCriblwithASIM
+        run: .\scripts\Test-ReleaseVersion.ps1
+
+      - name: Test required check trigger
+        shell: pwsh
+        working-directory: ZscalerViaCriblwithASIM
+        run: .\scripts\Test-RequiredChecks.ps1
 
       - name: Parse deployment script with Windows PowerShell 5.1
         shell: powershell

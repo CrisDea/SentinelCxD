@@ -11,6 +11,16 @@ param location string = resourceGroup().location
 @maxLength(24)
 param keyVaultName string = 'kv-zscasim-${uniqueString(resourceGroup().id)}'
 
+@description('Key Vault data-plane IP rules in { value: CIDR } form. Supply the outbound IP ranges for the Logic Apps; an empty list leaves the firewall closed.')
+param keyVaultAllowedIpRules array = []
+
+@description('IP ranges allowed to invoke the reusable ZIA operation trigger. Replace the fail-closed placeholder with the approved caller egress ranges before enabling the workflow.')
+param operationAllowedCallerIpAddresses array = [
+  {
+    addressRange: '0.0.0.0/32'
+  }
+]
+
 @description('Logic App playbook name.')
 param playbookName string = 'Zscaler-ASIM-Incident-Response'
 
@@ -191,8 +201,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       bypass: 'AzureServices'
-      defaultAction: 'Allow'
-      ipRules: []
+      defaultAction: 'Deny'
+      ipRules: keyVaultAllowedIpRules
       virtualNetworkRules: []
     }
   }
@@ -228,6 +238,7 @@ module operationPlaybook '../Playbooks/Zscaler-ZIA-Operation/azuredeploy.json' =
     EnableMutatingOperations: enableZiaMutatingOperations
     AuthorizedCallerObjectId: playbook.outputs.principalId
     TriggerAudience: operationTriggerAudience
+    AllowedCallerIpAddresses: operationAllowedCallerIpAddresses
     ApproverUpn: approverUpn
     ApprovalTimeout: approvalTimeout
     KeyVaultUri: keyVault.properties.vaultUri

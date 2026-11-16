@@ -17,3 +17,11 @@ SAS authentication is disabled at the Logic App resource level. SAS query parame
 The caller uses an HTTP action with managed identity authentication, sets its token audience to exactly `TriggerAudience`, and posts to the child Request trigger URL without `sp`, `sv`, or `sig` query parameters. Azure Logic Apps validates the token before starting the child workflow; the JSON allowlist and mutation approval controls then apply inside the workflow.
 
 Reference: [Secure access and data in workflows - Azure Logic Apps](https://learn.microsoft.com/azure/logic-apps/logic-apps-securing-a-logic-app), including the Microsoft Entra authorization-policy and SAS-disable guidance for Consumption Request triggers.
+
+The Request trigger also applies an IP allowlist. Its default `0.0.0.0/32` is intentionally fail-closed; before enabling the workflow, set `AllowedCallerIpAddresses` to the approved caller's stable egress CIDR ranges. Keep the Entra claims policy enabled as a second authorization layer.
+
+## Key Vault network access
+
+The shared Key Vault firewall defaults to `defaultAction: Deny` with no public IP rules. For the multitenant Logic Apps in this pack to read secrets, deployment owners must set `keyVaultAllowedIpRules` to the Logic Apps' outbound IP ranges for the deployed region (each entry uses `{ "value": "<CIDR>" }`) and retain Entra/RBAC authorization. The sample parameter file intentionally has no Key Vault IP rules, so secret reads remain blocked until an explicit allowlist is configured.
+
+`publicNetworkAccess` remains `Enabled` because these multitenant Logic Apps need outbound access to Key Vault and the pack does not provision private endpoints or VNet integration. To disable public network access, first migrate the workflows to a network-isolated design with a verified private route to Key Vault; simply switching this flag off would break secret retrieval. See [Key Vault network security](https://learn.microsoft.com/azure/key-vault/general/network-security) and [Logic Apps IP address ranges](https://learn.microsoft.com/azure/logic-apps/logic-apps-limits-and-config).
