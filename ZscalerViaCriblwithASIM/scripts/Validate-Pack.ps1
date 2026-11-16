@@ -185,6 +185,7 @@ $hunts = Get-JsonFile 'Hunting Queries\hunting-queries.json'
 $ziaWorkbooks = Get-JsonFile 'Workbooks\zia-workbook-parity.json'
 $zpaWorkbook = Get-JsonFile 'Workbooks\zpa-workbook-parity.json'
 $workbookDeployment = Get-JsonFile 'infra\generated\workbooks.json'
+$mainTemplate = Get-JsonFile 'Package\mainTemplate.json'
 $playbookParity = Get-JsonFile 'Playbooks\playbook-parity.json'
 $familyMapping = Get-JsonFile 'Cribl\family-mapping.json'
 $parserManifest = Get-JsonFile 'Parsers\parser-manifest.json'
@@ -339,6 +340,11 @@ $operationWorkflow = @($operationTemplate.resources |
 $triggerAccess = $operationWorkflow.properties.accessControl.triggers
 Assert-Condition ($triggerAccess.sasAuthenticationPolicy.state -eq 'Disabled') `
     'The ZIA operation Request trigger must disable SAS.'
+Assert-Condition ($triggerAccess.allowedCallerIpAddresses.Count -gt 0) `
+    'The ZIA operation Request trigger must have an IP allowlist.'
+Assert-Condition ($operationTemplate.parameters.
+    AllowedCallerIpAddresses.defaultValue[0].addressRange -eq '0.0.0.0/32') `
+    'The standalone ZIA trigger must default to a fail-closed IP range.'
 $maximumNesting = Get-LogicAppMaximumNesting `
     -Actions $operationWorkflow.properties.definition.actions
 Assert-Condition ($maximumNesting -le 8) `
@@ -384,6 +390,20 @@ Assert-Condition ($operationTemplate.parameters.
     AuthorizedCallerObjectId.defaultValue -eq
     '00000000-0000-0000-0000-000000000000') `
     'The ZIA operation caller must default to a fail-closed identity.'
+$keyVault = @($mainTemplate.resources |
+    Where-Object type -eq 'Microsoft.KeyVault/vaults')[0]
+Assert-Condition ($keyVault.properties.publicNetworkAccess -eq 'Enabled') `
+    'Key Vault public access must remain enabled for multitenant Logic App egress.'
+Assert-Condition ($keyVault.properties.networkAcls.defaultAction -eq 'Deny') `
+    'Key Vault network ACLs must deny access by default.'
+Assert-Condition ($keyVault.properties.networkAcls.bypass -eq 'AzureServices') `
+    'Key Vault must retain the trusted Azure services bypass.'
+Assert-Condition ($keyVault.properties.networkAcls.ipRules -eq
+    "[parameters('keyVaultAllowedIpRules')]") `
+    'Key Vault firewall IP rules must be deployment-configurable.'
+Assert-Condition ($mainTemplate.parameters.keyVaultAllowedIpRules.
+    defaultValue.Count -eq 0) `
+    'Key Vault firewall rules must default to no public IPs.'
 $mainBicep = Get-Content (Join-Path $root 'infra\main.bicep') -Raw
 Assert-Condition ($mainBicep -match `
     'value:\s+take\(hunt\.description,\s*256\)') `
@@ -396,6 +416,9 @@ Assert-Condition ([regex]::Matches(
 Assert-Condition ($mainBicep -match `
     'param\s+diagnosticSettingsEnabled\s+bool\s*=\s*true') `
     'Platform diagnostics must be enabled by default.'
+Assert-Condition ($mainBicep -match `
+    'AllowedCallerIpAddresses:\s+operationAllowedCallerIpAddresses') `
+    'The main deployment must pass the trigger IP allowlist to the child workflow.'
 Assert-Condition ($mainBicep -match `
     'param\s+analyticsRulesEnabled\s+bool\s*=\s*false') `
     'Analytic rules must be disabled by default.'

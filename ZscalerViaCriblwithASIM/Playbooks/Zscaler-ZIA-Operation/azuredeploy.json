@@ -44,6 +44,17 @@
         "description": "Exact aud claim required on the caller's Microsoft Entra access token. The caller must request a managed-identity token for this same audience."
       }
     },
+    "AllowedCallerIpAddresses": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "addressRange": "0.0.0.0/32"
+        }
+      ],
+      "metadata": {
+        "description": "Fail-closed IP allowlist for the HTTP Request trigger. Replace the placeholder with the approved caller's egress IP ranges before enabling the workflow."
+      }
+    },
     "ApproverUpn": {
       "type": "string",
       "defaultValue": ""
@@ -153,6 +164,7 @@
             "sasAuthenticationPolicy": {
               "state": "Disabled"
             },
+            "allowedCallerIpAddresses": "[parameters('AllowedCallerIpAddresses')]",
             "openAuthenticationPolicies": {
               "policies": {
                 "ApprovedManagedIdentityOnly": {
