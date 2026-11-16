@@ -7,3 +7,5 @@
 - Update pinned CodeQL, Scorecard and artifact upload actions.
 - Reject malformed release tags and unsafe build version paths before packaging.
 - Add regression coverage for release version validation.
+- Run the required validation check for every pull request, including action-only changes.
+- Update CodeQL to v4.39.3 to fix alert filtering for paths with spaces or special characters.
